@@ -1,0 +1,24 @@
+# Dependency directories
+node_modules/
+
+# Uploads and Backups
+backend/Uploads/
+backend/uploads/
+backend/backups/
+Uploads/
+uploads/
+
+# Build outputs
+frontend/dist/
+dist/
+build/
+*.exe
+
+# Environment variables
+.env
+.env.local
+
+# Editor files
+.vscode/
+.idea/
+.DS_Store

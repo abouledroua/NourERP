@@ -1,0 +1,45 @@
+{
+  "appId": "com.alnour.schoolerp",
+  "productName": "Al-Nour Academic & School ERP",
+  "copyright": "Copyright © 2026 Al-Nour Academic Systems",
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "files": [
+    "electron/**/*",
+    "backend/**/*",
+    "frontend/dist/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "bin/embedded-db",
+      "to": "embedded-db",
+      "filter": ["**/*"]
+    }
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "backend/**/*",
+    "**/*.node"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "requestedExecutionLevel": "requireAdministrator"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": true,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "نظام النور الأكاديمي للمدارس (Al-Nour ERP)",
+    "uninstallDisplayName": "نظام النور الأكاديمي والإداري للمدارس - Al-Nour School ERP"
+  }
+}

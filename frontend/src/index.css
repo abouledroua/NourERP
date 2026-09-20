@@ -1,0 +1,141 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: #e2e8f0;
+  }
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Glassmorphism card utilities */
+.glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+.glass-card-dark {
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(51, 65, 85, 0.8);
+}
+
+/* =========================================================================
+   STRICT SINGLE-PAGE PRINT OPTIMIZATION (W3C CSS Paged Media Standard)
+   ========================================================================= */
+@page {
+  size: A4 portrait;
+  margin: 5mm;
+}
+
+@media print {
+  /* Hide all non-printable application shell elements */
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .no-print,
+  nav,
+  aside,
+  header,
+  footer,
+  .sidebar,
+  button,
+  .print-controls {
+    display: none !important;
+  }
+
+  /* Single sheet container isolation */
+  .printable-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  /* Page break rules to strictly avoid orphan/trailing pages */
+  .page-container {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    max-height: 285mm; /* Within A4 297mm height limit */
+    overflow: hidden !important;
+  }
+
+  .voucher-slip {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Cut line dashed styling */
+  .cut-line {
+    border-top: 1.5px dashed #64748b !important;
+    position: relative;
+    margin: 4mm 0 !important;
+  }
+
+  /* Print density scaling */
+  .print-density-normal .voucher-slip {
+    padding: 3mm 4mm !important;
+    margin-bottom: 2mm !important;
+  }
+
+  .print-density-compact .voucher-slip {
+    padding: 2mm 3mm !important;
+    margin-bottom: 1.5mm !important;
+    font-size: 9pt !important;
+  }
+
+  .print-density-ultra .voucher-slip {
+    padding: 1.5mm 2.5mm !important;
+    margin-bottom: 1mm !important;
+    font-size: 8pt !important;
+  }
+
+  .print-density-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 3mm !important;
+  }
+}
+
+/* Toast progress countdown animation */
+@keyframes toastProgress {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+.animate-toast-progress {
+  animation: toastProgress 3s linear forwards;
+}

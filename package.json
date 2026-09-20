@@ -1,0 +1,41 @@
+{
+  "name": "alnour-school-erp",
+  "version": "1.0.0",
+  "description": "Al-Nour Academic & School ERP - نظام النور الأكاديمي والإداري المتكامل للمدارس",
+  "main": "electron/main.cjs",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node backend/server.js",
+    "backend": "node backend/server.js",
+    "frontend": "npm --prefix frontend run dev",
+    "dev": "concurrently -k -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run backend\" \"npm run frontend\"",
+    "build:frontend": "npm --prefix frontend run build",
+    "build": "npm run build:frontend",
+    "electron:dev": "concurrently -k -n \"BACKEND,FRONTEND,ELECTRON\" -c \"blue,green,magenta\" \"npm run backend\" \"npm run frontend\" \"wait-on http://localhost:5173 && electron .\"",
+    "pack": "npm run build:frontend && electron-builder --dir",
+    "dist": "npm run build:frontend && electron-builder --win",
+    "init-db": "node backend/database/initDb.js",
+    "setup-db": "node scripts/setup-embedded-db.js",
+    "test:api": "node scripts/test-api.mjs"
+  },
+  "keywords": [
+    "school-erp",
+    "education",
+    "k12",
+    "preschool",
+    "academic-management",
+    "alnour-erp",
+    "electron",
+    "react",
+    "express"
+  ],
+  "author": "Al-Nour Systems",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "wait-on": "^8.0.2"
+  }
+}

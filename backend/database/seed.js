@@ -118,24 +118,26 @@ export async function seedDatabase() {
   }
 
   // 7. Classes
-  const [teacherRows] = await pool.query(`SELECT id FROM teachers LIMIT 3`);
-  const t1 = teacherRows[0]?.id || null;
-  const t2 = teacherRows[1]?.id || null;
+  const [existingClasses] = await pool.query(`SELECT COUNT(*) as count FROM classes`);
+  if (existingClasses[0].count === 0) {
+    const [teacherRows] = await pool.query(`SELECT id FROM teachers LIMIT 3`);
+    const t1 = teacherRows[0]?.id || null;
+    const t2 = teacherRows[1]?.id || null;
 
-  await pool.query(`
-    INSERT INTO classes (academic_year_id, academic_track_id, name, grade_level, section, capacity, homeroom_teacher_id, classroom, status)
-    VALUES
-      (?, ?, 'فوج الفراشات - قسم التحضيري', 'KG2', 'A', 20, ?, 'قاعة الألوان 1', 'ACTIVE'),
-      (?, ?, 'السنة الثالثة ابتدائي - فوج 1', '3AP', 'A', 28, ?, 'القاعة 04', 'ACTIVE'),
-      (?, ?, 'السنة الرابعة متوسط (شهادة BEM)', '4AM', 'B', 30, ?, 'القاعة 09', 'ACTIVE'),
-      (?, ?, 'فوج الدعم المكثف - رياضيات ثانوية', 'SUP-BAC', 'S1', 25, ?, 'قاعة المحاضرات ب', 'ACTIVE')
-    ON DUPLICATE KEY UPDATE name = VALUES(name)
-  `, [
-    yearId, trackMap['PRE_SCHOOL'], t2,
-    yearId, trackMap['K12_PRIMARY'], t1,
-    yearId, trackMap['K12_MIDDLE'], t1,
-    yearId, trackMap['ACADEMIC_TUTORING'], t1
-  ]);
+    await pool.query(`
+      INSERT INTO classes (matricule, academic_year_id, academic_track_id, name, grade_level, section, capacity, homeroom_teacher_id, classroom, status)
+      VALUES
+        ('GRP-2025-001', ?, ?, 'فوج الفراشات - قسم التحضيري', 'KG2', 'A', 20, ?, 'قاعة الألوان 1', 'ACTIVE'),
+        ('GRP-2025-002', ?, ?, 'السنة الثالثة ابتدائي - فوج 1', '3AP', 'A', 28, ?, 'القاعة 04', 'ACTIVE'),
+        ('GRP-2025-003', ?, ?, 'السنة الرابعة متوسط (شهادة BEM)', '4AM', 'B', 30, ?, 'القاعة 09', 'ACTIVE'),
+        ('GRP-2025-004', ?, ?, 'فوج الدعم المكثف - رياضيات ثانوية', 'SUP-BAC', 'S1', 25, ?, 'قاعة المحاضرات ب', 'ACTIVE')
+    `, [
+      yearId, trackMap['PRE_SCHOOL'], t2,
+      yearId, trackMap['K12_PRIMARY'], t1,
+      yearId, trackMap['K12_MIDDLE'], t1,
+      yearId, trackMap['ACADEMIC_TUTORING'], t1
+    ]);
+  }
 
   // 8. Students
   const [classRows] = await pool.query(`SELECT id, academic_track_id, name FROM classes`);

@@ -22,6 +22,9 @@ import posRoutes from './routes/posRoutes.js';
 import settingsRoutes from './routes/settingsRoutes.js';
 import auditRoutes from './routes/auditRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import roomRoutes from './routes/roomRoutes.js';
+import announcementRoutes from './routes/announcementRoutes.js';
+import parentRoutes from './routes/parentRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +66,9 @@ app.use('/api/finance', financeRoutes);
 app.use('/api/pos', posRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/rooms', roomRoutes);
+app.use('/api/announcements', announcementRoutes);
+app.use('/api/parent', parentRoutes);
 
 // Health check endpoint
 app.get('/api/health', async (req, res) => {

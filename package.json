@@ -6,7 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node backend/server.js",
-    "backend": "node backend/server.js",
+    "backend": "node --watch backend/server.js",
     "frontend": "npm --prefix frontend run dev",
     "dev": "concurrently -k -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run backend\" \"npm run frontend\"",
     "build:frontend": "npm --prefix frontend run build",

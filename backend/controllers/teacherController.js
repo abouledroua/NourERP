@@ -34,7 +34,7 @@ export async function listTeachers(req, res) {
 }
 
 export async function createTeacher(req, res) {
-  const { national_id, first_name, last_name, gender, email, phone, specialty, qualification, hire_date, monthly_salary, status, photo_url } = req.body;
+  const { national_id, first_name, last_name, gender, email, phone, specialty, qualification, hire_date, monthly_salary, hourly_rate, payment_type, status, photo_url } = req.body;
   if (!first_name || !last_name) {
     return res.status(400).json({ success: false, message: 'الاسم واللقب مطلوبان / First name and last name required' });
   }
@@ -44,12 +44,12 @@ export async function createTeacher(req, res) {
     const code = `TEA-${(maxRow.max_id + 1).toString().padStart(3, '0')}`;
 
     const result = await query(`
-      INSERT INTO teachers (employee_code, national_id, first_name, last_name, gender, email, phone, specialty, qualification, hire_date, monthly_salary, status, photo_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO teachers (employee_code, national_id, first_name, last_name, gender, email, phone, specialty, qualification, hire_date, monthly_salary, hourly_rate, payment_type, status, photo_url)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       code, national_id || null, first_name, last_name, gender || 'MALE', email || null,
       phone || null, specialty || null, qualification || null, hire_date || new Date(),
-      monthly_salary || 0.00, status || 'ACTIVE', photo_url || null
+      monthly_salary || 0.00, hourly_rate || 0.00, payment_type || 'MONTHLY', status || 'ACTIVE', photo_url || null
     ]);
 
     await logAudit(req.user?.id, req.deviceId, req.workstationName, 'CREATE', 'teachers', result.insertId, { code, first_name, last_name }, req.ip);
@@ -66,7 +66,7 @@ export async function updateTeacher(req, res) {
   try {
     const cols = [];
     const vals = [];
-    const allowed = ['national_id', 'first_name', 'last_name', 'gender', 'email', 'phone', 'specialty', 'qualification', 'hire_date', 'monthly_salary', 'status', 'photo_url'];
+    const allowed = ['national_id', 'first_name', 'last_name', 'gender', 'email', 'phone', 'specialty', 'qualification', 'hire_date', 'monthly_salary', 'hourly_rate', 'payment_type', 'status', 'photo_url'];
 
     for (const key of allowed) {
       if (fields[key] !== undefined) {
@@ -154,6 +154,60 @@ export async function listSubjects(req, res) {
     const subjects = await query(sql, params);
     res.json({ success: true, data: subjects });
   } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function payTeacher(req, res) {
+  const { teacher_id } = req.params; // Get teacher_id from params as it's part of the route URL
+  const { account_id, hours_taught, hourly_rate, amount, payment_type, notes, payment_date } = req.body;
+  
+  if (!teacher_id || amount === undefined) {
+    return res.status(400).json({ success: false, message: 'بيانات الدفع غير مكتملة / Incomplete payment details' });
+  }
+  
+  try {
+    const total_amount = Number(amount);
+    if (isNaN(total_amount) || total_amount <= 0) {
+      return res.status(400).json({ success: false, message: 'المبلغ غير صحيح / Invalid amount' });
+    }
+
+    const date = payment_date || new Date().toISOString().slice(0, 10);
+    const hrs = payment_type === 'MONTHLY' ? 0 : (hours_taught || 0);
+    
+    // Start transaction to record payment and deduct from account
+    await query('START TRANSACTION');
+    
+    const result = await query(
+      'INSERT INTO teacher_payments (teacher_id, account_id, hours_taught, hourly_rate, total_amount, payment_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [teacher_id, account_id || null, hrs, hourly_rate || 0, total_amount, date, notes || null]
+    );
+    
+    if (account_id) {
+      const year = new Date().getFullYear();
+      const [countRow] = await query('SELECT COUNT(id) AS count FROM cash_transactions');
+      const voucher_number = `CSH-${year}-${(countRow.count + 1).toString().padStart(4, '0')}`;
+      
+      await query(
+        'INSERT INTO cash_transactions (voucher_number, transaction_type, category, amount, description, account_id, performed_by, transaction_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        [voucher_number, 'EXPENSE', 'SALARY', total_amount, `Teacher Payment: ${notes || payment_type || ''}`, account_id, req.user?.id || null, date]
+      );
+      
+      await query('UPDATE financial_accounts SET balance = balance - ? WHERE id = ?', [total_amount, account_id]);
+    }
+    
+    // Audit Log for Teacher Payment
+    await logAudit(
+      req.user?.id, req.deviceId, req.workstationName, 
+      'PAY', 'teachers', teacher_id, 
+      { payment_id: result.insertId, amount: total_amount, payment_type, account_id }, 
+      req.ip
+    );
+
+    await query('COMMIT');
+    res.status(201).json({ success: true, message: 'تم تسجيل دفع الأستاذ بنجاح / Teacher payment recorded', data: { total_amount } });
+  } catch (err) {
+    await query('ROLLBACK');
     res.status(500).json({ success: false, message: err.message });
   }
 }

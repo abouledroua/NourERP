@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Plus, Calendar, Phone, Mail, Award, Clock, Search, Trash2, Edit2 } from 'lucide-react';
+import { BookOpen, Plus, Calendar, Phone, Mail, Award, Clock, Search, Trash2, Edit2, Wallet } from 'lucide-react';
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
@@ -25,6 +25,10 @@ export default function Teachers() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSubModalOpen, setIsSubModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+
+  const [payTeacher, setPayTeacher] = useState(null);
+  const [accounts, setAccounts] = useState([]);
 
   // Forms
   const [newTeacher, setNewTeacher] = useState({
@@ -34,7 +38,9 @@ export default function Teachers() {
     qualification: '',
     phone: '',
     email: '',
-    monthly_salary: 50000.00,
+    payment_type: 'MONTHLY',
+    monthly_salary: '',
+    hourly_rate: '',
     photo_url: ''
   });
 
@@ -46,8 +52,18 @@ export default function Teachers() {
     qualification: '',
     phone: '',
     email: '',
-    monthly_salary: 0,
+    payment_type: 'MONTHLY',
+    monthly_salary: '',
+    hourly_rate: '',
     photo_url: ''
+  });
+
+  const [payForm, setPayForm] = useState({
+    payment_type: 'MONTHLY',
+    hours_taught: '',
+    amount: 0,
+    payment_method: 'CASH',
+    account_id: ''
   });
 
   const [newSub, setNewSub] = useState({
@@ -84,15 +100,62 @@ export default function Teachers() {
 
   const fetchDependencies = async () => {
     try {
-      const [cRes, sRes] = await Promise.all([
+      const [cRes, sRes, accRes] = await Promise.all([
         api.get('/classes'),
-        api.get('/teachers/subjects')
+        api.get('/teachers/subjects'),
+        api.get('/finance/accounts')
       ]);
       if (cRes.success) setClasses(cRes.data);
       if (sRes.success) setSubjects(sRes.data);
+      if (accRes.success) setAccounts(accRes.data);
     } catch (err) {
       console.error('[DEPS] Error:', err);
     }
+  };
+
+  const resetAddForm = () => {
+    setNewTeacher({
+      first_name: '',
+      last_name: '',
+      specialty: '',
+      qualification: '',
+      phone: '',
+      email: '',
+      payment_type: 'MONTHLY',
+      monthly_salary: '',
+      hourly_rate: '',
+      photo_url: ''
+    });
+    setIsAddModalOpen(false);
+  };
+
+  const resetEditForm = () => {
+    setEditTeacher({
+      id: '',
+      first_name: '',
+      last_name: '',
+      specialty: '',
+      qualification: '',
+      phone: '',
+      email: '',
+      payment_type: 'MONTHLY',
+      monthly_salary: '',
+      hourly_rate: '',
+      photo_url: ''
+    });
+    setIsEditModalOpen(false);
+  };
+
+  const resetPayForm = () => {
+    setPayForm({
+      payment_type: 'MONTHLY',
+      hours_taught: '',
+      amount: 0,
+      payment_method: 'CASH',
+      account_id: ''
+    });
+    setPayTeacher(null);
+    setIsPayModalOpen(false);
   };
 
   useEffect(() => {
@@ -113,17 +176,7 @@ export default function Teachers() {
       const res = await api.post('/teachers', newTeacher);
       if (res.success) {
         toast.success(res.message || t('toast.teacher_created'));
-        setIsAddModalOpen(false);
-        setNewTeacher({
-          first_name: '',
-          last_name: '',
-          specialty: '',
-          qualification: '',
-          phone: '',
-          email: '',
-          monthly_salary: 50000.00,
-          photo_url: ''
-        });
+        resetAddForm();
         fetchTeachers();
       }
     } catch (err) {
@@ -145,13 +198,28 @@ export default function Teachers() {
     }
   };
 
+  const handlePayTeacher = async (e) => {
+    e.preventDefault();
+    if (!payTeacher) return;
+    try {
+      const res = await api.post(`/teachers/${payTeacher.id}/pay`, payForm);
+      if (res.success) {
+        toast.success(res.message || t('toast.teacher_paid', 'تم دفع راتب الأستاذ بنجاح'));
+        resetPayForm();
+        fetchTeachers();
+      }
+    } catch (err) {
+      toast.error(err.message || t('toast.teacher_pay_failed', 'خطأ في دفع الراتب'));
+    }
+  };
+
   const handleUpdateTeacher = async (e) => {
     e.preventDefault();
     try {
       const res = await api.put(`/teachers/${editTeacher.id}`, editTeacher);
       if (res.success) {
         toast.success(res.message || t('toast.teacher_updated', 'تم تحديث بيانات الأستاذ بنجاح'));
-        setIsEditModalOpen(false);
+        resetEditForm();
         fetchTeachers();
       }
     } catch (err) {
@@ -239,7 +307,7 @@ export default function Teachers() {
                 <th className="py-3.5 px-4">{t('teachers.col_name')}</th>
                 <th className="py-3.5 px-4">{t('teachers.col_specialty')}</th>
                 <th className="py-3.5 px-4">{t('teachers.col_phone')}</th>
-                <th className="py-3.5 px-4">{t('teachers.col_salary')}</th>
+                <th className="py-3.5 px-4">{t('teachers.col_salary', 'الراتب / نسبة بالساعة')}</th>
                 <th className="py-3.5 px-4">{t('teachers.col_status', 'الحالة')}</th>
                 <th className="py-3.5 px-4 text-center">{t('teachers.col_actions', 'الإجراءات')}</th>
               </tr>
@@ -275,14 +343,35 @@ export default function Teachers() {
                   <td className="py-3 px-4 font-semibold text-emerald-800">{tea.specialty || '-'}</td>
                   <td className="py-3 px-4 font-mono text-slate-600">{tea.phone || '-'}</td>
                   <td className="py-3 px-4 font-mono font-bold text-slate-900">
-                    {formatCurrency(tea.monthly_salary, settings.currency)}
+                    {tea.payment_type === 'HOURLY' ? (
+                      <div className="text-emerald-700">{formatCurrency(tea.hourly_rate || 0, settings.currency)} / {t('teachers.payment_hourly_short', 'ساعة')}</div>
+                    ) : (
+                      <div>{formatCurrency(tea.monthly_salary, settings.currency)} / {t('teachers.payment_monthly_short', 'شهر')}</div>
+                    )}
                   </td>
                   <td className="py-3 px-4">
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-emerald-50 text-emerald-700">
-                      نشط ومباشر
+                      {tea.payment_type === 'HOURLY' ? t('teachers.payment_hourly', 'حسب الساعات') : t('teachers.payment_monthly', 'راتب شهري')}
                     </span>
                   </td>
                   <td className="py-3 px-4 text-center">
+                    <button
+                      onClick={() => {
+                        setPayTeacher(tea);
+                        setPayForm({
+                          payment_type: tea.payment_type || 'MONTHLY',
+                          hours_taught: '',
+                          amount: tea.payment_type === 'MONTHLY' ? (tea.monthly_salary || 0) : 0,
+                          payment_method: 'CASH',
+                          account_id: accounts.find(a => a.is_default)?.id || (accounts[0]?.id || '')
+                        });
+                        setIsPayModalOpen(true);
+                      }}
+                      title={t('teachers.pay_salary', 'دفع الراتب')}
+                      className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors mx-1"
+                    >
+                      <Wallet className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => {
                         setEditTeacher(tea);
@@ -295,7 +384,7 @@ export default function Teachers() {
                     </button>
                     <button
                       onClick={() => handleDeleteTeacher(tea)}
-                      title="حذف الأستاذ"
+                      title={t('teachers.delete_btn', 'حذف الأستاذ')}
                       className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors mx-1"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -313,7 +402,7 @@ export default function Teachers() {
           ========================================================================= */}
       <Modal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        onClose={resetAddForm}
         title={t('teachers.modal_add_title')}
       >
         <form onSubmit={handleCreateTeacher} className="space-y-4 text-xs">
@@ -385,21 +474,50 @@ export default function Teachers() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('teachers.col_salary')}</label>
-              <input
-                type="number"
-                value={newTeacher.monthly_salary}
-                onChange={e => setNewTeacher({ ...newTeacher, monthly_salary: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">{t('teachers.payment_type', 'طريقة الدفع')} *</label>
+                <select
+                  value={newTeacher.payment_type}
+                  onChange={e => setNewTeacher({ ...newTeacher, payment_type: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  <option value="MONTHLY">{t('teachers.payment_monthly', 'راتب شهري')}</option>
+                  <option value="HOURLY">{t('teachers.payment_hourly', 'بالساعة')}</option>
+                </select>
+              </div>
+              {newTeacher.payment_type === 'MONTHLY' ? (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">{t('teachers.col_salary', 'الراتب الشهري')} *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    value={newTeacher.monthly_salary}
+                    onChange={e => setNewTeacher({ ...newTeacher, monthly_salary: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">{t('teachers.hourly_rate', 'الراتب بالساعة')} *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    value={newTeacher.hourly_rate}
+                    onChange={e => setNewTeacher({ ...newTeacher, hourly_rate: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsAddModalOpen(false)}
+              onClick={resetAddForm}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors"
             >
               {t('common.cancel')}
@@ -419,7 +537,7 @@ export default function Teachers() {
           ========================================================================= */}
       <Modal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={resetEditForm}
         title={t('teachers.edit_btn', 'تعديل الأستاذ')}
       >
         <form onSubmit={handleUpdateTeacher} className="space-y-4 text-xs">
@@ -474,21 +592,50 @@ export default function Teachers() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('teachers.col_salary')}</label>
-              <input
-                type="number"
-                value={editTeacher.monthly_salary}
-                onChange={e => setEditTeacher({ ...editTeacher, monthly_salary: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">{t('teachers.payment_type', 'طريقة الدفع')} *</label>
+                <select
+                  value={editTeacher.payment_type || 'MONTHLY'}
+                  onChange={e => setEditTeacher({ ...editTeacher, payment_type: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                >
+                  <option value="MONTHLY">{t('teachers.payment_monthly', 'راتب شهري')}</option>
+                  <option value="HOURLY">{t('teachers.payment_hourly', 'بالساعة')}</option>
+                </select>
+              </div>
+              {editTeacher.payment_type === 'HOURLY' ? (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">{t('teachers.hourly_rate', 'الراتب بالساعة')} *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    value={editTeacher.hourly_rate || 0}
+                    onChange={e => setEditTeacher({ ...editTeacher, hourly_rate: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                  />
+                </div>
+              ) : (
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">{t('teachers.col_salary', 'الراتب الشهري')} *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    value={editTeacher.monthly_salary || 0}
+                    onChange={e => setEditTeacher({ ...editTeacher, monthly_salary: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={() => setIsEditModalOpen(false)}
+              onClick={resetEditForm}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold transition-colors"
             >
               {t('common.cancel')}
@@ -655,6 +802,98 @@ export default function Teachers() {
             </table>
           </div>
         </div>
+      </Modal>
+
+      {/* =========================================================================
+          MODAL: PAY TEACHER
+          ========================================================================= */}
+      <Modal
+        isOpen={isPayModalOpen}
+        onClose={resetPayForm}
+        title={`${t('teachers.pay_teacher', 'دفع راتب أستاذ:')} ${payTeacher?.first_name || ''} ${payTeacher?.last_name || ''}`}
+      >
+        <form onSubmit={handlePayTeacher} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('teachers.payment_type', 'طريقة الدفع')}</label>
+              <select
+                value={payForm.payment_type}
+                onChange={e => {
+                  const pType = e.target.value;
+                  setPayForm({
+                    ...payForm,
+                    payment_type: pType,
+                    amount: pType === 'MONTHLY' ? (payTeacher?.monthly_salary || 0) : ((payForm.hours_taught || 0) * (payTeacher?.hourly_rate || 0))
+                  });
+                }}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
+              >
+                <option value="MONTHLY">{t('teachers.payment_monthly', 'راتب شهري')}</option>
+                <option value="HOURLY">{t('teachers.payment_hourly', 'بالساعة')}</option>
+              </select>
+            </div>
+            
+            {payForm.payment_type === 'HOURLY' && (
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">{t('teachers.hours_taught', 'عدد الساعات')}</label>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  value={payForm.hours_taught}
+                  onChange={e => {
+                    const hours = e.target.value;
+                    const newAmount = hours * (payTeacher?.hourly_rate || 0);
+                    setPayForm({ ...payForm, hours_taught: hours, amount: newAmount });
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
+                  placeholder={t('teachers.hours_taught_placeholder', 'عدد الساعات المنجزة')}
+                />
+              </div>
+            )}
+            
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('teachers.total_amount', 'المبلغ الإجمالي')}</label>
+              <input
+                type="number"
+                min="0"
+                step="500"
+                required
+                value={payForm.amount}
+                onChange={e => setPayForm({ ...payForm, amount: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono"
+              />
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('teachers.payment_method', 'وسيلة الدفع')}</label>
+              <select
+                value={payForm.payment_method}
+                onChange={e => setPayForm({ ...payForm, payment_method: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
+              >
+                <option value="CASH">{t('common.cash', 'نقداً')}</option>
+                <option value="BANK_TRANSFER">{t('common.bank_transfer', 'تحويل بنكي')}</option>
+                <option value="CHEQUE">{t('common.cheque', 'شيك')}</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('finance.financial_account', 'الحساب المالي')}</label>
+              <select
+                required
+                value={payForm.account_id}
+                onChange={e => setPayForm({ ...payForm, account_id: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
+              >
+                <option value="">{t('finance.select_account', 'اختر الحساب...')}</option>
+                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance})</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button type="button" onClick={resetPayForm} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">{t('common.cancel', 'إلغاء')}</button>
+            <button type="submit" className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold">{t('common.pay', 'دفع')}</button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

@@ -3,7 +3,7 @@ import { logAudit } from '../middlewares/deviceGuard.js';
 import { exportToExcel } from '../services/excelService.js';
 
 export async function listStudents(req, res) {
-  const { trackId, classId, status, search, limit = 100, offset = 0 } = req.query;
+  const { trackId, classId, status, search, debtStatus, limit = 100, offset = 0 } = req.query;
 
   try {
     let sql = `
@@ -41,6 +41,17 @@ export async function listStudents(req, res) {
       sql += ' AND s.status = ?';
       params.push(status);
     }
+    if (debtStatus === 'DEBT' || debtStatus === 'HAS_DEBT') {
+      sql += ` AND (
+        IFNULL((SELECT SUM(remaining_debt) FROM payments WHERE student_id = s.id), 0) +
+        IFNULL((SELECT SUM(remaining_debt) FROM product_sales WHERE student_id = s.id), 0)
+      ) > 0`;
+    } else if (debtStatus === 'CLEARED' || debtStatus === 'NO_DEBT') {
+      sql += ` AND (
+        IFNULL((SELECT SUM(remaining_debt) FROM payments WHERE student_id = s.id), 0) +
+        IFNULL((SELECT SUM(remaining_debt) FROM product_sales WHERE student_id = s.id), 0)
+      ) <= 0`;
+    }
     if (search) {
       sql += ` AND (
         s.matricule LIKE ? 
@@ -48,11 +59,18 @@ export async function listStudents(req, res) {
         OR s.last_name_ar LIKE ? 
         OR s.first_name_en LIKE ? 
         OR s.last_name_en LIKE ? 
+        OR s.phone LIKE ?
+        OR s.email LIKE ?
         OR s.parent_name LIKE ? 
         OR s.parent_phone LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM student_guardians sg 
+          WHERE sg.student_id = s.id 
+          AND (sg.name LIKE ? OR sg.phone LIKE ?)
+        )
       )`;
       const term = `%${search}%`;
-      params.push(term, term, term, term, term, term, term);
+      params.push(term, term, term, term, term, term, term, term, term, term, term);
     }
 
     sql += ' ORDER BY s.created_at DESC LIMIT ? OFFSET ?';
@@ -88,6 +106,25 @@ export async function getStudentDossier(req, res) {
       return res.status(404).json({ success: false, message: 'التلميذ غير موجود / Student not found' });
     }
     const student = students[0];
+
+    // 1.1 Guardians (Multiple Parents & Emergency Contacts)
+    const guardiansRaw = await query(`
+      SELECT id, student_id, relationship, name, phone, email, job, is_primary
+      FROM student_guardians
+      WHERE student_id = ?
+      ORDER BY is_primary DESC, id ASC
+    `, [id]);
+
+    const guardians = guardiansRaw.length > 0 ? guardiansRaw : (student.parent_name ? [{
+      id: 'legacy',
+      student_id: student.id,
+      relationship: 'FATHER',
+      name: student.parent_name,
+      phone: student.parent_phone,
+      email: student.parent_email,
+      job: student.parent_job,
+      is_primary: 1
+    }] : []);
 
     // 2. Assigned Classes / Cohorts (Multi-class enrollment)
     const assignedClasses = await query(`
@@ -175,6 +212,7 @@ export async function getStudentDossier(req, res) {
       success: true,
       data: {
         student,
+        guardians,
         assignedClasses,
         grades,
         attendance: attendanceSummary,
@@ -191,7 +229,7 @@ export async function getStudentDossier(req, res) {
 }
 
 export async function createStudent(req, res) {
-  const {
+  let {
     national_id,
     first_name_ar,
     last_name_ar,
@@ -205,39 +243,121 @@ export async function createStudent(req, res) {
     academic_track_id,
     parent_name,
     parent_phone,
+    phone,
+    email,
     parent_email,
     parent_job,
+    parents,
     address,
     maladies,
     medical_notes,
     photo_url
   } = req.body;
 
-  if (!first_name_ar || !last_name_ar || !birth_date || !parent_name || !parent_phone || !academic_track_id) {
+  if (!first_name_ar || !last_name_ar || !birth_date || !academic_track_id) {
     return res.status(400).json({ success: false, message: 'يرجى ملء جميع الحقول الإلزامية للتلميذ / Required fields missing' });
   }
 
   try {
+    // Check for potential duplicate student (same name and birth date)
+    const existing = await query(`
+      SELECT id, matricule FROM students 
+      WHERE first_name_ar = ? AND last_name_ar = ? AND birth_date = ?
+    `, [first_name_ar.trim(), last_name_ar.trim(), birth_date]);
+
+    if (existing.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message: `يوجد تلميذ مسجل مسبقاً بنفس الاسم وتاريخ الميلاد (رقم القيد: ${existing[0].matricule})`
+      });
+    }
+
     const year = new Date().getFullYear();
-    const [maxRow] = await query('SELECT COALESCE(MAX(id), 0) AS max_id FROM students');
-    const nextNum = (maxRow.max_id + 1).toString().padStart(4, '0');
-    const matricule = `STU-${year}-${nextNum}`;
+
+    // If multiple parents are sent, synchronize the primary one to the main record
+    if (Array.isArray(parents) && parents.length > 0) {
+      const validParents = parents.filter(p => p && (p.name?.trim() || p.phone?.trim()));
+      if (validParents.length > 0) {
+        const primaryParent = validParents.find(p => p.is_primary) || validParents[0];
+        parent_name = primaryParent.name?.trim() || parent_name || null;
+        parent_phone = primaryParent.phone?.trim() || parent_phone || null;
+        parent_email = primaryParent.email?.trim()?.toLowerCase() || parent_email || null;
+        parent_job = primaryParent.job?.trim() || parent_job || null;
+      }
+    }
+    
+    // Get Track Code
+    let trackShort = 'GEN';
+    if (academic_track_id) {
+      const [track] = await query('SELECT code FROM academic_tracks WHERE id = ?', [academic_track_id]);
+      if (track) {
+        const trackShortNames = {
+          'PRE_SCHOOL': 'PRE',
+          'K12_PRIMARY': 'PRI',
+          'K12_MIDDLE': 'MID',
+          'K12_HIGH': 'HIG',
+          'ACADEMIC_TUTORING': 'TUT'
+        };
+        trackShort = trackShortNames[track.code] || track.code.substring(0, 3).toUpperCase();
+      }
+    }
+
+    // Sequence specific to the group (Track)
+    const [maxRow] = await query('SELECT COUNT(*) AS total FROM students WHERE academic_track_id = ?', [academic_track_id]);
+    const nextNum = (maxRow.total + 1).toString().padStart(4, '0');
+    
+    const matricule = `${trackShort}-${year}-${nextNum}`;
 
     const result = await query(`
       INSERT INTO students (
         matricule, national_id, first_name_ar, last_name_ar, first_name_en, last_name_en,
         gender, birth_date, birth_place, blood_group, current_class_id, academic_track_id,
-        enrollment_date, status, parent_name, parent_phone, parent_email, parent_job,
+        enrollment_date, status, parent_name, parent_phone, phone, email, parent_email, parent_job,
         address, maladies, medical_notes, photo_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      matricule, national_id || null, first_name_ar, last_name_ar, first_name_en || null, last_name_en || null,
+      matricule, 
+      national_id || null, 
+      first_name_ar, 
+      last_name_ar, 
+      first_name_en ? first_name_en.trim().toUpperCase() : null, 
+      last_name_en ? last_name_en.trim().toUpperCase() : null,
       gender || 'MALE', birth_date, birth_place || null, blood_group || null, current_class_id || null, academic_track_id,
-      parent_name, parent_phone, parent_email || null, parent_job || null, address || null, maladies || null, medical_notes || null,
+      parent_name || null, parent_phone || null, phone || null, email ? email.trim().toLowerCase() : null, parent_email || null, parent_job || null, address || null, maladies || null, medical_notes || null,
       photo_url || null
     ]);
 
     const newStudentId = result.insertId;
+
+    // Save multiple guardians in student_guardians
+    if (Array.isArray(parents) && parents.length > 0) {
+      const validParents = parents.filter(p => p && (p.name?.trim() || p.phone?.trim()));
+      for (const p of validParents) {
+        await query(`
+          INSERT INTO student_guardians (student_id, relationship, name, phone, email, job, is_primary)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `, [
+          newStudentId,
+          p.relationship || 'FATHER',
+          p.name?.trim() || 'ولي أمر',
+          p.phone?.trim() || null,
+          p.email?.trim()?.toLowerCase() || null,
+          p.job?.trim() || null,
+          p.is_primary ? 1 : 0
+        ]);
+      }
+    } else if (parent_name?.trim() || parent_phone?.trim()) {
+      await query(`
+        INSERT INTO student_guardians (student_id, relationship, name, phone, email, job, is_primary)
+        VALUES (?, 'FATHER', ?, ?, ?, ?, 1)
+      `, [
+        newStudentId,
+        parent_name?.trim() || 'ولي أمر',
+        parent_phone?.trim() || null,
+        parent_email?.trim()?.toLowerCase() || null,
+        parent_job?.trim() || null
+      ]);
+    }
 
     // If assigned to class, create enrollment record
     if (current_class_id) {
@@ -268,20 +388,60 @@ export async function updateStudent(req, res) {
   const fields = req.body;
 
   try {
+    // Handle multiple guardians update
+    if (fields.parents !== undefined && Array.isArray(fields.parents)) {
+      const validParents = fields.parents.filter(p => p && (p.name?.trim() || p.phone?.trim()));
+      await query('DELETE FROM student_guardians WHERE student_id = ?', [id]);
+      
+      if (validParents.length > 0) {
+        const primaryParent = validParents.find(p => p.is_primary) || validParents[0];
+        fields.parent_name = primaryParent.name?.trim() || null;
+        fields.parent_phone = primaryParent.phone?.trim() || null;
+        fields.parent_email = primaryParent.email?.trim()?.toLowerCase() || null;
+        fields.parent_job = primaryParent.job?.trim() || null;
+
+        for (const p of validParents) {
+          await query(`
+            INSERT INTO student_guardians (student_id, relationship, name, phone, email, job, is_primary)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+          `, [
+            id,
+            p.relationship || 'FATHER',
+            p.name?.trim() || 'ولي أمر',
+            p.phone?.trim() || null,
+            p.email?.trim()?.toLowerCase() || null,
+            p.job?.trim() || null,
+            p.is_primary ? 1 : 0
+          ]);
+        }
+      } else {
+        fields.parent_name = null;
+        fields.parent_phone = null;
+        fields.parent_email = null;
+        fields.parent_job = null;
+      }
+    }
+
     const updateCols = [];
     const updateVals = [];
 
     const allowed = [
       'national_id', 'first_name_ar', 'last_name_ar', 'first_name_en', 'last_name_en',
       'gender', 'birth_date', 'birth_place', 'blood_group', 'current_class_id',
-      'academic_track_id', 'status', 'parent_name', 'parent_phone', 'parent_email',
+      'academic_track_id', 'status', 'parent_name', 'parent_phone', 'phone', 'email', 'parent_email',
       'parent_job', 'address', 'maladies', 'medical_notes', 'photo_url'
     ];
 
     for (const key of allowed) {
       if (fields[key] !== undefined) {
+        let val = fields[key];
+        if ((key === 'first_name_en' || key === 'last_name_en') && typeof val === 'string') {
+          val = val.trim().toUpperCase();
+        } else if (key === 'email' && typeof val === 'string') {
+          val = val.trim() ? val.trim().toLowerCase() : null;
+        }
         updateCols.push(`\`${key}\` = ?`);
-        updateVals.push(fields[key]);
+        updateVals.push(val);
       }
     }
 
@@ -332,6 +492,8 @@ export async function exportStudentsExcel(req, res) {
         s.birth_date AS 'تاريخ_الميلاد',
         c.name AS 'القسم_الحالي',
         t.name_ar AS 'المسار_الدراسي',
+        s.phone AS 'هاتف_التلميذ',
+        s.email AS 'بريد_التلميذ',
         s.parent_name AS 'اسم_الولي',
         s.parent_phone AS 'هاتف_الولي',
         s.status AS 'الحالة_الأكاديمية'

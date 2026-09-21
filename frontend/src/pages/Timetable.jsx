@@ -4,6 +4,7 @@ import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import Modal from '../components/Modal';
+import { formatTime } from '../utils/formatters';
 
 const DAY_KEYS = [
   { id: 0, key: 'day_sunday' },
@@ -28,6 +29,7 @@ export default function Timetable() {
   const [classes, setClasses] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [subjects, setSubjects] = useState([]);
+  const [rooms, setRooms] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [timetableSlots, setTimetableSlots] = useState([]);
 
@@ -40,15 +42,16 @@ export default function Timetable() {
     dayOfWeek: 0,
     startTime: '08:00',
     endTime: '09:00',
-    room: '01'
+    room: 'Salle 01'
   });
 
   const fetchFilters = async () => {
     try {
-      const [cRes, tRes, sRes] = await Promise.all([
+      const [cRes, tRes, sRes, rRes] = await Promise.all([
         api.get('/classes'),
         api.get('/teachers'),
-        api.get('/teachers/subjects')
+        api.get('/teachers/subjects'),
+        api.get('/rooms')
       ]);
       if (cRes.success) {
         setClasses(cRes.data);
@@ -58,6 +61,12 @@ export default function Timetable() {
       }
       if (tRes.success) setTeachers(tRes.data);
       if (sRes.success) setSubjects(sRes.data);
+      if (rRes.success) {
+        setRooms(rRes.data);
+        if (rRes.data.length > 0) {
+          setSlotForm(prev => ({ ...prev, room: rRes.data[0].name }));
+        }
+      }
     } catch (err) {
       console.error('[TIMETABLE] Error loading filters:', err);
     }
@@ -218,7 +227,7 @@ export default function Timetable() {
                         <span className="font-extrabold text-xs text-slate-900">{slot.subject_name_ar}</span>
                         <div className="flex items-center gap-1">
                           <span className="font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-md text-slate-600 font-bold">
-                            {slot.start_time.substring(0, 5)} - {slot.end_time.substring(0, 5)}
+                            {formatTime(slot.start_time)} - {formatTime(slot.end_time)}
                           </span>
                           <button
                             onClick={() => handleDeleteSlot(slot.id)}
@@ -326,12 +335,15 @@ export default function Timetable() {
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('timetable.col_room')}</label>
-              <input
-                type="text"
+              <select
                 value={slotForm.room}
                 onChange={e => setSlotForm({ ...slotForm, room: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900"
-              />
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              >
+                {rooms.map(r => (
+                  <option key={r.id} value={r.name}>{r.name} ({r.code || ''})</option>
+                ))}
+              </select>
             </div>
           </div>
 

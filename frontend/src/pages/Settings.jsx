@@ -13,6 +13,7 @@ import {
   ShieldAlert, 
   Check 
 } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
@@ -24,7 +25,16 @@ export default function Settings() {
   const toast = useToast();
   const confirm = useConfirm();
 
-  const [activeTab, setActiveTab] = useState('general'); // 'general' | 'tracks' | 'years' | 'devices' | 'backup'
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') || 'general';
+  const [activeTab, setActiveTab] = useState(initialTab); // 'general' | 'tracks' | 'years' | 'devices' | 'backup'
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
   const [formSettings, setFormSettings] = useState(globalSettings);
   const [tracks, setTracks] = useState([]);
   const [years, setYears] = useState([]);

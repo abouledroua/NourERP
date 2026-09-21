@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -16,7 +16,8 @@ import {
   Wallet,
   Sparkles,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Check
 } from 'lucide-react';
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -25,6 +26,8 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import Modal from '../components/Modal';
 import PhotoUpload from '../components/PhotoUpload';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
+import ArabicInput from '../components/ArabicInput';
+import DateInput from '../components/DateInput';
 
 export default function Students() {
   const navigate = useNavigate();
@@ -42,10 +45,34 @@ export default function Students() {
   const [selectedTrack, setSelectedTrack] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedDebt, setSelectedDebt] = useState('');
 
   // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const firstNameArRef = useRef(null);
+
+  useEffect(() => {
+    if (isModalOpen && !editingStudent) {
+      const timer = setTimeout(() => {
+        firstNameArRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isModalOpen, editingStudent]);
+
+  const defaultParents = [
+    {
+      id: 1,
+      relationship: 'FATHER',
+      name: '',
+      phone: '',
+      email: '',
+      job: '',
+      is_primary: true
+    }
+  ];
 
   const initialFormState = {
     national_id: '',
@@ -59,8 +86,11 @@ export default function Students() {
     blood_group: '',
     academic_track_id: '',
     status: 'ACTIVE',
+    parents: defaultParents,
     parent_name: '',
     parent_phone: '',
+    phone: '',
+    email: '',
     parent_email: '',
     parent_job: '',
     address: '',
@@ -71,19 +101,76 @@ export default function Students() {
 
   const [formData, setFormData] = useState(initialFormState);
 
+  const handleAddParent = () => {
+    const current = formData.parents || [];
+    const defaultRel = current.some(p => p.relationship === 'FATHER') ? 'MOTHER' : 'GUARDIAN';
+    setFormData({
+      ...formData,
+      parents: [
+        ...current,
+        {
+          id: Date.now(),
+          relationship: defaultRel,
+          name: '',
+          phone: '',
+          email: '',
+          job: '',
+          is_primary: current.length === 0
+        }
+      ]
+    });
+  };
+
+  const handleRemoveParent = (indexToRemove) => {
+    const current = [...(formData.parents || [])];
+    current.splice(indexToRemove, 1);
+    if (current.length > 0 && !current.some(p => p.is_primary)) {
+      current[0].is_primary = true;
+    }
+    if (current.length === 0) {
+      current.push({
+        id: Date.now(),
+        relationship: 'FATHER',
+        name: '',
+        phone: '',
+        email: '',
+        job: '',
+        is_primary: true
+      });
+    }
+    setFormData({ ...formData, parents: current });
+  };
+
+  const handleParentChange = (index, field, value) => {
+    const updated = [...(formData.parents || [])];
+    if (field === 'is_primary' && value === true) {
+      updated.forEach((p, i) => {
+        p.is_primary = (i === index);
+      });
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
+    setFormData({ ...formData, parents: updated });
+  };
+
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      const params = new URLSearchParams();
-      if (search) params.append('search', search);
-      if (selectedTrack) params.append('trackId', selectedTrack);
-      if (selectedClass) params.append('classId', selectedClass);
-      if (selectedStatus) params.append('status', selectedStatus);
-
-      const res = await api.get(`/students?${params.toString()}`);
-      if (res.success) setStudents(res.data);
+      const res = await api.get('/students', {
+        params: {
+          search: search || undefined,
+          trackId: selectedTrack || undefined,
+          classId: selectedClass || undefined,
+          status: selectedStatus || undefined,
+          debtStatus: selectedDebt || undefined,
+          limit: 200
+        }
+      });
+      if (res.success) {
+        setStudents(res.data);
+      }
     } catch (err) {
-      console.error('[STUDENTS] Error fetching list:', err);
+      toast.error(t('toast.student_load_failed'));
     } finally {
       setLoading(false);
     }
@@ -92,9 +179,11 @@ export default function Students() {
   const fetchClasses = async () => {
     try {
       const res = await api.get('/classes');
-      if (res.success) setClasses(res.data);
+      if (res.success) {
+        setClasses(res.data);
+      }
     } catch (err) {
-      console.error('[STUDENTS] Error fetching classes:', err);
+      console.error(err);
     }
   };
 
@@ -103,23 +192,64 @@ export default function Students() {
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const delayDebounceFn = setTimeout(() => {
       fetchStudents();
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [search, selectedTrack, selectedClass, selectedStatus]);
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [search, selectedTrack, selectedClass, selectedStatus, selectedDebt]);
 
   const handleOpenAddModal = () => {
     setEditingStudent(null);
     setFormData({
       ...initialFormState,
-      academic_track_id: tracks[0]?.id || ''
+      parents: [
+        {
+          id: 1,
+          relationship: 'FATHER',
+          name: '',
+          phone: '',
+          email: '',
+          job: '',
+          is_primary: true
+        }
+      ],
+      academic_track_id: ''
     });
     setIsModalOpen(true);
   };
 
-  const handleOpenEditModal = (st) => {
+  const handleOpenEditModal = async (st) => {
     setEditingStudent(st);
+    let guardiansList = [];
+    try {
+      const res = await api.get(`/students/${st.id}`);
+      if (res.success && res.data?.guardians) {
+        guardiansList = res.data.guardians;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    const loadedParents = guardiansList.length > 0 
+      ? guardiansList.map((g, idx) => ({
+          id: g.id || idx + 1,
+          relationship: g.relationship || 'FATHER',
+          name: g.name || '',
+          phone: g.phone || '',
+          email: g.email || '',
+          job: g.job || '',
+          is_primary: Boolean(g.is_primary)
+        }))
+      : [{
+          id: 1,
+          relationship: 'FATHER',
+          name: st.parent_name || '',
+          phone: st.parent_phone || '',
+          email: st.parent_email || '',
+          job: st.parent_job || '',
+          is_primary: true
+        }];
+
     setFormData({
       national_id: st.national_id || '',
       first_name_ar: st.first_name_ar || '',
@@ -127,13 +257,16 @@ export default function Students() {
       first_name_en: st.first_name_en || '',
       last_name_en: st.last_name_en || '',
       gender: st.gender || 'MALE',
-      birth_date: st.birth_date ? st.birth_date.split('T')[0] : '2018-05-15',
+      birth_date: st.birth_date ? st.birth_date.split('T')[0] : '',
       birth_place: st.birth_place || '',
-      blood_group: st.blood_group || 'O+',
+      blood_group: st.blood_group || '',
       academic_track_id: st.academic_track_id || '',
       status: st.status || 'ACTIVE',
+      parents: loadedParents,
       parent_name: st.parent_name || '',
       parent_phone: st.parent_phone || '',
+      phone: st.phone || '',
+      email: st.email || '',
       parent_email: st.parent_email || '',
       parent_job: st.parent_job || '',
       address: st.address || '',
@@ -146,9 +279,39 @@ export default function Students() {
 
   const handleSubmitStudent = async (e) => {
     e.preventDefault();
+    const validParents = (formData.parents || []).map(p => ({
+      relationship: p.relationship || 'FATHER',
+      name: p.name ? p.name.trim() : '',
+      phone: p.phone ? p.phone.trim() : '',
+      email: p.email ? p.email.trim().toLowerCase() : '',
+      job: p.job ? p.job.trim() : '',
+      is_primary: Boolean(p.is_primary)
+    }));
+    const primaryG = validParents.find(p => p.is_primary) || validParents[0] || {};
+
+    const payload = {
+      ...formData,
+      first_name_en: formData.first_name_en ? formData.first_name_en.trim().toUpperCase() : '',
+      last_name_en: formData.last_name_en ? formData.last_name_en.trim().toUpperCase() : '',
+      email: formData.email ? formData.email.trim().toLowerCase() : '',
+      parents: validParents,
+      parent_name: primaryG.name || '',
+      parent_phone: primaryG.phone || '',
+      parent_email: primaryG.email || '',
+      parent_job: primaryG.job || ''
+    };
+    if (!payload.birth_date) {
+      toast.error(t('students.birth_date_required', 'تاريخ الميلاد إلزامي / Date de naissance obligatoire'));
+      return;
+    }
+    if (!payload.academic_track_id) {
+      toast.error(t('students.track_required', 'يرجى اختيار الطور التعليمي / Veuillez sélectionner un cycle'));
+      return;
+    }
     try {
+      setIsSubmitting(true);
       if (editingStudent) {
-        const res = await api.put(`/students/${editingStudent.id}`, formData);
+        const res = await api.put(`/students/${editingStudent.id}`, payload);
         if (res.success) {
           toast.success(res.message || t('toast.student_updated', 'تم تحديث بيانات التلميذ بنجاح'));
           setIsModalOpen(false);
@@ -156,7 +319,7 @@ export default function Students() {
           fetchStudents();
         }
       } else {
-        const res = await api.post('/students', formData);
+        const res = await api.post('/students', payload);
         if (res.success) {
           toast.success(res.message || t('toast.student_created', 'تم تسجيل التلميذ بنجاح'));
           setIsModalOpen(false);
@@ -166,6 +329,8 @@ export default function Students() {
       }
     } catch (err) {
       toast.error(err.message || t('toast.student_save_failed', 'فشل حفظ بيانات التلميذ'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -279,6 +444,17 @@ export default function Students() {
           <option value="TRANSFERRED">{t('students.status_transferred', 'محول')}</option>
           <option value="SUSPENDED">{t('students.status_suspended', 'معلق')}</option>
         </select>
+
+        {/* Debt Filter */}
+        <select
+          value={selectedDebt}
+          onChange={(e) => setSelectedDebt(e.target.value)}
+          className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+        >
+          <option value="">{t('students.filter_debt_all', 'جميع الوضعيات (الديون)')}</option>
+          <option value="DEBT">{t('students.filter_debt_has', 'عليهم ديون مستحقة')}</option>
+          <option value="CLEARED">{t('students.filter_debt_cleared', 'مستوفون (بدون ديون)')}</option>
+        </select>
       </div>
 
       {/* Students Data Table */}
@@ -370,8 +546,17 @@ export default function Students() {
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <div className="font-medium text-slate-800">{st.parent_name}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">{st.parent_phone}</div>
+                      <div className="font-medium text-slate-800">{st.parent_name || '-'}</div>
+                      {st.parent_phone && (
+                        <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                          <Phone className="w-2.5 h-2.5 text-slate-400" /> {st.parent_phone}
+                        </div>
+                      )}
+                      {st.phone && (
+                        <div className="text-[10px] text-blue-600 font-mono font-bold flex items-center gap-1 mt-0.5" title={t('students.student_phone', 'هاتف التلميذ')}>
+                          <Phone className="w-2.5 h-2.5 text-blue-500" /> {st.phone}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       {Number(st.total_debt) > 0 ? (
@@ -384,8 +569,8 @@ export default function Students() {
                     </td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${st.status === 'ACTIVE'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
-                          : 'bg-slate-100 text-slate-600'
+                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
+                        : 'bg-slate-100 text-slate-600'
                         }`}>
                         {st.status === 'ACTIVE' ? t('students.status_active') : (t(`students.status_${st.status?.toLowerCase()}`, st.status))}
                       </span>
@@ -429,8 +614,31 @@ export default function Students() {
           ? `${t('students.edit', 'تعديل بيانات التلميذ')}: ${editingStudent.first_name_ar} ${editingStudent.last_name_ar} (${editingStudent.matricule})`
           : t('students.modal_add_title')}
         maxWidth="max-w-3xl"
+        headerActions={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setIsModalOpen(false);
+                setEditingStudent(null);
+              }}
+              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+            >
+              {t('common.cancel', 'إلغاء')}
+            </button>
+            <button
+              type="submit"
+              form="studentModalForm"
+              disabled={isSubmitting}
+              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs shadow-emerald-600/30 transition-all flex items-center gap-1.5"
+            >
+              <Check className="w-3.5 h-3.5" />
+              {isSubmitting ? 'جاري الحفظ...' : editingStudent ? t('common.save_changes', 'تحديث البيانات') : t('common.save', 'حفظ التلميذ')}
+            </button>
+          </div>
+        }
       >
-        <form onSubmit={handleSubmitStudent} className="space-y-4">
+        <form id="studentModalForm" onSubmit={handleSubmitStudent} className="space-y-4">
           {/* Photo Upload Component */}
           <PhotoUpload
             photoUrl={formData.photo_url}
@@ -449,24 +657,22 @@ export default function Students() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.first_name_ar')} *</label>
-                <input
-                  type="text"
+                <ArabicInput
+                  ref={firstNameArRef}
+                  autoFocus={!editingStudent}
                   required
                   value={formData.first_name_ar}
                   onChange={e => setFormData({ ...formData, first_name_ar: e.target.value })}
-                  placeholder={t('students.first_name_placeholder', 'يونس')}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  placeholder={t('students.first_name_placeholder', 'إسم التلميذ')}
                 />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.last_name_ar')} *</label>
-                <input
-                  type="text"
+                <ArabicInput
                   required
                   value={formData.last_name_ar}
                   onChange={e => setFormData({ ...formData, last_name_ar: e.target.value })}
-                  placeholder={t('students.last_name_placeholder', 'المنصوري')}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  placeholder={t('students.last_name_placeholder', 'لقب التلميذ')}
                 />
               </div>
             </div>
@@ -480,9 +686,9 @@ export default function Students() {
                 <input
                   type="text"
                   value={formData.first_name_en}
-                  onChange={e => setFormData({ ...formData, first_name_en: e.target.value })}
-                  placeholder="ex: Younes"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  onChange={e => setFormData({ ...formData, first_name_en: e.target.value.toUpperCase() })}
+                  placeholder={t('students.first_name_fr')}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none uppercase font-semibold"
                 />
               </div>
               <div>
@@ -492,9 +698,9 @@ export default function Students() {
                 <input
                   type="text"
                   value={formData.last_name_en}
-                  onChange={e => setFormData({ ...formData, last_name_en: e.target.value })}
-                  placeholder="ex: Mansouri"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  onChange={e => setFormData({ ...formData, last_name_en: e.target.value.toUpperCase() })}
+                  placeholder="ex: MANSOURI"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none uppercase font-semibold"
                 />
               </div>
             </div>
@@ -513,12 +719,10 @@ export default function Students() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.birth_date')} *</label>
-                <input
-                  type="date"
+                <DateInput
                   required
                   value={formData.birth_date}
                   onChange={e => setFormData({ ...formData, birth_date: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -543,17 +747,55 @@ export default function Students() {
               </div>
             </div>
 
-            {/* National ID */}
+            {/* Student Phone, Email & National ID */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {t('students.student_phone', 'رقم هاتف التلميذ')}
+                </label>
+                <input
+                  type="text"
+                  value={formData.phone || ''}
+                  onChange={e => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="0550 00 00 00"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {t('students.student_email', 'البريد الإلكتروني للتلميذ')}
+                </label>
+                <input
+                  type="email"
+                  value={formData.email || ''}
+                  onChange={e => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="eleve@example.com"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {t('students.national_id', 'رقم التعريف الوطني (NIN)')}
+                </label>
+                <input
+                  type="text"
+                  value={formData.national_id || ''}
+                  onChange={e => setFormData({ ...formData, national_id: e.target.value })}
+                  placeholder={t('students.nin_placeholder', '18 رقماً أو رقم بطاقة التعريف الوطنية')}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Residential Address */}
             <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                {t('students.national_id', 'رقم التعريف الوطني (NIN)')}
-              </label>
-              <input
-                type="text"
-                value={formData.national_id || ''}
-                onChange={e => setFormData({ ...formData, national_id: e.target.value })}
-                placeholder={t('students.nin_placeholder', '18 رقماً أو رقم بطاقة التعريف الوطنية')}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.address', 'العنوان السكني')}</label>
+              <textarea
+                rows={2}
+                value={formData.address || ''}
+                onChange={e => setFormData({ ...formData, address: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                placeholder={t('students.address_placeholder', 'الحي، البلدية، الولاية')}
               />
             </div>
           </div>
@@ -572,7 +814,7 @@ export default function Students() {
                   onChange={e => setFormData({ ...formData, academic_track_id: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
-                  <option value="">{t('students.filter_track')}</option>
+                  <option value="" disabled>{t('students.select_track', '-- اختر الطور التعليمي --')}</option>
                   {tracks.map(tItem => (
                     <option key={tItem.id} value={tItem.id}>
                       {isRTL ? tItem.name_ar : (tItem.name_fr || tItem.name_en || tItem.name_ar)}
@@ -599,89 +841,180 @@ export default function Students() {
             </div>
           </div>
 
-          {/* Parent Guardian Details */}
+          {/* Health & Medical Information */}
           <div className="pt-2 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-3">
-              {t('students.section_parent')}
+            <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-2">
+              {t('students.section_medical', 'الحالة الصحية والملاحظات الطبية')}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.parent_name')} *</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.parent_name}
-                  onChange={e => setFormData({ ...formData, parent_name: e.target.value })}
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.maladies', 'الأمراض (إن وجدت)')}</label>
+                <textarea
+                  rows={2}
+                  value={formData.maladies || ''}
+                  onChange={e => setFormData({ ...formData, maladies: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  placeholder={t('students.maladies_placeholder', 'سجل الأمراض أو الحالات المزمنة هنا...')}
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.parent_phone')} *</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.parent_phone}
-                  onChange={e => setFormData({ ...formData, parent_phone: e.target.value })}
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.medical_notes', 'ملاحظات صحية أو حساسية')}</label>
+                <textarea
+                  rows={2}
+                  value={formData.medical_notes || ''}
+                  onChange={e => setFormData({ ...formData, medical_notes: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  placeholder="0550 00 00 00"
+                  placeholder={t('students.medical_notes_placeholder', 'حساسية، أمراض مزمنة، أدوية خاصة إن وجدت...')}
                 />
               </div>
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+          {/* Parent Guardian Details (Multi-parent Support) */}
+          <div className="pt-2 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.parent_email', 'البريد الإلكتروني للولي')}</label>
-                <input
-                  type="email"
-                  value={formData.parent_email || ''}
-                  onChange={e => setFormData({ ...formData, parent_email: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  placeholder="parent@example.com"
-                />
+                <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                  {t('students.section_parent', 'بيانات الأولياء والمراسلة')}
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  {t('students.section_parent_desc', 'يمكنك إضافة معلومات أكثر من ولي أمر أو جهة اتصال (الأب، الأم، الولي الشرعي...)')}
+                </p>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.parent_job', 'مهنة الولي')}</label>
-                <input
-                  type="text"
-                  value={formData.parent_job || ''}
-                  onChange={e => setFormData({ ...formData, parent_job: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  placeholder={t('students.parent_job_placeholder', 'مهندس، تاجر، موظف...')}
-                />
-              </div>
+              <button
+                type="button"
+                onClick={handleAddParent}
+                className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('students.add_parent', 'إضافة ولي أمر آخر')}</span>
+              </button>
             </div>
 
-            <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.address', 'العنوان السكني')}</label>
-              <input
-                type="text"
-                value={formData.address || ''}
-                onChange={e => setFormData({ ...formData, address: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder={t('students.address_placeholder', 'الحي، البلدية، الولاية')}
-              />
-            </div>
+            <div className="space-y-3">
+              {(formData.parents || []).map((parent, idx) => (
+                <div
+                  key={parent.id || idx}
+                  className={`p-3.5 rounded-2xl border transition-all ${
+                    parent.is_primary
+                      ? 'bg-emerald-50/40 border-emerald-200/80 ring-1 ring-emerald-500/10'
+                      : 'bg-slate-50/70 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-200/60">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <span className="text-xs font-bold text-slate-800">
+                        {parent.relationship === 'FATHER' ? t('students.rel_father', 'الأب')
+                          : parent.relationship === 'MOTHER' ? t('students.rel_mother', 'الأم')
+                          : parent.relationship === 'GUARDIAN' ? t('students.rel_guardian', 'الولي القانوني')
+                          : t('students.rel_other', 'آخر')}
+                      </span>
+                      {parent.is_primary && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white shadow-2xs">
+                          {t('students.primary_tag', 'رئيسي')}
+                        </span>
+                      )}
+                    </div>
 
-            <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.maladies', 'الأمراض (إن وجدت)')}</label>
-              <textarea
-                rows={2}
-                value={formData.maladies || ''}
-                onChange={e => setFormData({ ...formData, maladies: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder={t('students.maladies_placeholder', 'سجل الأمراض أو الحالات المزمنة هنا...')}
-              />
-            </div>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                        <input
+                          type="radio"
+                          name={`primary_guardian_radio_${idx}`}
+                          checked={Boolean(parent.is_primary)}
+                          onChange={() => handleParentChange(idx, 'is_primary', true)}
+                          className="text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] font-medium text-slate-700">{t('students.is_primary_guardian', 'الولي الرئيسي')}</span>
+                      </label>
 
-            <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.medical_notes', 'ملاحظات صحية أو حساسية')}</label>
-              <textarea
-                rows={2}
-                value={formData.medical_notes || ''}
-                onChange={e => setFormData({ ...formData, medical_notes: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder={t('students.medical_notes_placeholder', 'حساسية، أمراض مزمنة، أدوية خاصة إن وجدت...')}
-              />
+                      {formData.parents.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveParent(idx)}
+                          className="p-1.5 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                          title={t('students.remove_parent', 'حذف')}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_relationship', 'صلة القرابة')}
+                      </label>
+                      <select
+                        value={parent.relationship || 'FATHER'}
+                        onChange={e => handleParentChange(idx, 'relationship', e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      >
+                        <option value="FATHER">{t('students.rel_father', 'الأب')}</option>
+                        <option value="MOTHER">{t('students.rel_mother', 'الأم')}</option>
+                        <option value="GUARDIAN">{t('students.rel_guardian', 'الولي القانوني')}</option>
+                        <option value="OTHER">{t('students.rel_other', 'آخر')}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_name', 'اسم ولقب الولي')}
+                      </label>
+                      <input
+                        type="text"
+                        value={parent.name || ''}
+                        onChange={e => handleParentChange(idx, 'name', e.target.value)}
+                        placeholder="ex: Mohamed Mansouri"
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_phone', 'رقم الهاتف')}
+                      </label>
+                      <input
+                        type="text"
+                        value={parent.phone || ''}
+                        onChange={e => handleParentChange(idx, 'phone', e.target.value)}
+                        placeholder="0550 00 00 00"
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_job', 'المهنة')}
+                      </label>
+                      <input
+                        type="text"
+                        value={parent.job || ''}
+                        onChange={e => handleParentChange(idx, 'job', e.target.value)}
+                        placeholder={t('students.parent_job_placeholder', 'مهندس، تاجر، موظف...')}
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_email', 'البريد الإلكتروني')}
+                      </label>
+                      <input
+                        type="email"
+                        value={parent.email || ''}
+                        onChange={e => handleParentChange(idx, 'email', e.target.value)}
+                        placeholder="parent@example.com"
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -698,9 +1031,10 @@ export default function Students() {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30 transition-all"
+              disabled={isSubmitting}
+              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30 transition-all"
             >
-              {editingStudent ? t('common.save_changes', 'تحديث البيانات') : t('common.save', 'حفظ التلميذ')}
+              {isSubmitting ? 'جاري الحفظ...' : editingStudent ? t('common.save_changes', 'تحديث البيانات') : t('common.save', 'حفظ التلميذ')}
             </button>
           </div>
         </form>

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Search, Filter, Terminal, Calendar, Eye } from 'lucide-react';
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
-import { formatDate } from '../utils/formatters';
+import { formatDate, formatDateTime } from '../utils/formatters';
 import Modal from '../components/Modal';
 
 export default function AuditLogs() {
@@ -112,7 +112,7 @@ export default function AuditLogs() {
               ) : (
                 logs.map(log => (
                   <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 font-mono text-slate-500">{new Date(log.created_at).toLocaleString('fr-FR')}</td>
+                    <td className="py-3 px-4 font-mono text-slate-500">{formatDateTime(log.created_at)}</td>
                     <td className="py-3 px-4 font-bold text-slate-900">{log.user_full_name || t('audit.system_user')}</td>
                     <td className="py-3 px-4 font-mono text-slate-600">{log.workstation_name}</td>
                     <td className="py-3 px-4">

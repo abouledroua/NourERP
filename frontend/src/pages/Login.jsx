@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Lock, User, Laptop, Shield, Sparkles, CheckCircle } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { Lock, User, Laptop, Shield, Sparkles, CheckCircle, HeartHandshake } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import DeviceRegistrationModal from '../components/DeviceRegistrationModal';
@@ -163,6 +163,17 @@ export default function Login() {
           {/* Demo hint */}
           <div className="mt-6 pt-4 border-t border-slate-800 text-center text-[11px] text-slate-500">
             {t('login.demo_hint')} <span className="text-slate-300 font-mono font-bold">admin</span> / <span className="text-slate-300 font-mono font-bold">admin123</span>
+          </div>
+
+          {/* Direct Link to Parent Portal */}
+          <div className="mt-4 pt-3 border-t border-slate-800/60 text-center">
+            <Link
+              to="/parent-login"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400 hover:text-emerald-300 text-xs font-bold transition-all shadow-sm"
+            >
+              <HeartHandshake className="w-4 h-4" />
+              <span>{t('parent_portal.parent_portal_link', 'فضاء الأولياء')} (تسجيل دخول الأولياء)</span>
+            </Link>
           </div>
         </div>
       </div>

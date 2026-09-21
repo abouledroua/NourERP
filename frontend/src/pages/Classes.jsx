@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Plus, Shuffle, ArrowRight, CheckCircle2, UserCheck, Shield, School, Eye, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
+import { Users, Plus, Shuffle, ArrowRight, CheckCircle2, UserCheck, Shield, School, Eye, Trash2, DoorOpen } from 'lucide-react';
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import Modal from '../components/Modal';
+import RoomsManager from '../components/RoomsManager';
 
 export default function Classes() {
   const { t, isRTL } = useLanguage();
@@ -18,9 +20,18 @@ export default function Classes() {
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isRosterOpen, setIsRosterOpen] = useState(false);
-  const [activeClass, setActiveClass] = useState(null);
-  const [rosterStudents, setRosterStudents] = useState([]);
+  const [isRoomsModalOpen, setIsRoomsModalOpen] = useState(false);
+  const [rooms, setRooms] = useState([]);
+  const classNameRef = useRef(null);
+
+  useEffect(() => {
+    if (isAddModalOpen) {
+      const timer = setTimeout(() => {
+        classNameRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isAddModalOpen]);
 
   // Promotion / Rollover Wizard
   const [isRolloverOpen, setIsRolloverOpen] = useState(false);
@@ -38,7 +49,10 @@ export default function Classes() {
     capacity: 30,
     room_number: '',
     homeroom_teacher_id: '',
-    academic_year_id: ''
+    academic_year_id: '',
+    pricing_type: 'MONTHLY',
+    pricing_value: 0,
+    schedule_info: ''
   });
 
   const fetchClasses = async () => {
@@ -62,23 +76,22 @@ export default function Classes() {
     }
   };
 
+  const fetchRooms = async () => {
+    try {
+      const res = await api.get('/rooms');
+      if (res.success) setRooms(res.data);
+    } catch (err) {
+      console.error('[ROOMS] Error:', err);
+    }
+  };
+
   useEffect(() => {
     fetchClasses();
     fetchTeachers();
+    fetchRooms();
   }, []);
 
-  const handleOpenRoster = async (cls) => {
-    setActiveClass(cls);
-    try {
-      const res = await api.get(`/classes/${cls.id}/roster`);
-      if (res.success) {
-        setRosterStudents(res.data);
-        setIsRosterOpen(true);
-      }
-    } catch (err) {
-      toast.error(err.message || 'تعذر تحميل قائمة تلاميذ القسم');
-    }
-  };
+
 
   const handleCreateClass = async (e) => {
     e.preventDefault();
@@ -97,7 +110,10 @@ export default function Classes() {
           capacity: 30,
           room_number: '',
           homeroom_teacher_id: '',
-          academic_year_id: ''
+          academic_year_id: '',
+          pricing_type: 'MONTHLY',
+          pricing_value: 0,
+          schedule_info: ''
         });
         fetchClasses();
       }
@@ -189,6 +205,13 @@ export default function Classes() {
 
         <div className="flex items-center gap-2.5">
           <button
+            onClick={() => setIsRoomsModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl text-xs font-bold border border-slate-200 shadow-xs transition-colors"
+          >
+            <DoorOpen className="w-4 h-4 text-emerald-600" />
+            <span>{t('classes.manage_rooms_btn', 'Gérer les salles')}</span>
+          </button>
+          <button
             onClick={() => setIsRolloverOpen(true)}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-2xl text-xs font-bold border border-slate-200 shadow-xs transition-colors"
           >
@@ -225,13 +248,16 @@ export default function Classes() {
                   <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-slate-100 text-slate-700">
                     {cls.track_name_ar}
                   </span>
-                  <span className="text-xs font-mono font-bold text-slate-400">
-                    {cls.classroom || 'بدون قاعة'}
+                  <span className="text-xs font-mono font-bold text-slate-400 flex items-center gap-2">
+                    {cls.matricule && <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded-md">{cls.matricule}</span>}
+                    <span>{cls.classroom || 'بدون قاعة'}</span>
                   </span>
                 </div>
 
                 <h3 className="text-base font-black text-slate-900 leading-snug">
-                  {cls.name}
+                  <Link to={`/classes/${cls.id}`} className="hover:text-emerald-600 hover:underline transition-colors">
+                    {cls.name}
+                  </Link>
                 </h3>
                 <p className="text-xs text-slate-500">
                   المستوى: <strong className="text-slate-700">{cls.grade_level}</strong> | الفوج: <strong className="text-slate-700">{cls.section}</strong>
@@ -268,15 +294,8 @@ export default function Classes() {
 
                 <div className="flex items-center gap-1.5">
                   <button
-                    onClick={() => handleOpenRoster(cls)}
-                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 transition-colors flex items-center gap-1"
-                  >
-                    <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>{t('classes.view_roster')}</span>
-                  </button>
-                  <button
                     onClick={() => handleDeleteClass(cls)}
-                    title="حذف القسم"
+                    title={t('classes.delete_class', 'حذف الفوج')}
                     className="p-1.5 bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl text-xs font-bold border border-slate-200 transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -301,6 +320,8 @@ export default function Classes() {
           <div>
             <label className="block font-bold text-slate-700 mb-1">{t('classes.class_name')} *</label>
             <input
+              ref={classNameRef}
+              autoFocus
               type="text"
               required
               value={newClass.name}
@@ -348,14 +369,28 @@ export default function Classes() {
               />
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('classes.room_name')}</label>
-              <input
-                type="text"
-                value={newClass.classroom}
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-bold text-slate-700">{t('classes.room_name')}</label>
+                <button
+                  type="button"
+                  onClick={() => setIsRoomsModalOpen(true)}
+                  className="text-[10px] text-emerald-600 hover:underline font-bold"
+                >
+                  + {t('classes.manage_rooms_btn', 'Gérer les salles')}
+                </button>
+              </div>
+              <select
+                value={newClass.classroom || ''}
                 onChange={e => setNewClass({ ...newClass, classroom: e.target.value })}
-                placeholder={t('classes.room_placeholder')}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
+              >
+                <option value="">{t('classes.room_placeholder')}</option>
+                {rooms.map(r => (
+                  <option key={r.id} value={r.name}>
+                    {r.name} ({r.capacity} {t('rooms.seats', 'مقعد / places')}{r.building ? ` - ${r.building}` : ''})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -371,6 +406,43 @@ export default function Classes() {
                 <option key={tea.id} value={tea.id}>{tea.first_name} {tea.last_name} ({tea.specialty})</option>
               ))}
             </select>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">نوع التسعيرة / Pricing Type</label>
+              <select
+                required
+                value={newClass.pricing_type}
+                onChange={e => setNewClass({ ...newClass, pricing_type: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              >
+                <option value="MONTHLY">شهري (Monthly)</option>
+                <option value="SESSION">بالحصة (Per Session)</option>
+                <option value="HOURLY">بالساعة (Hourly)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">السعر / Price</label>
+              <input
+                type="number"
+                required
+                value={newClass.pricing_value}
+                onChange={e => setNewClass({ ...newClass, pricing_value: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">التوقيت / Schedule Info</label>
+            <input
+              type="text"
+              value={newClass.schedule_info}
+              onChange={e => setNewClass({ ...newClass, schedule_info: e.target.value })}
+              placeholder="مثال: السبت والثلاثاء 10:00 إلى 12:00"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
           </div>
 
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
@@ -389,42 +461,6 @@ export default function Classes() {
             </button>
           </div>
         </form>
-      </Modal>
-
-      {/* =========================================================================
-          MODAL: CLASS ROSTER
-          ========================================================================= */}
-      <Modal
-        isOpen={isRosterOpen}
-        onClose={() => setIsRosterOpen(false)}
-        title={activeClass ? `${t('classes.modal_roster_title')}: ${activeClass.name} (${rosterStudents.length} ${t('classes.students_count')})` : t('classes.view_roster')}
-      >
-        <div className="space-y-3">
-          {rosterStudents.length === 0 ? (
-            <p className="text-xs text-slate-400 text-center py-6">{t('classes.roster_empty')}</p>
-          ) : (
-            <table className="w-full text-xs text-right rtl:text-right ltr:text-left border-collapse border border-slate-200">
-              <thead>
-                <tr className="bg-slate-100 text-slate-700 font-bold">
-                  <th className="p-2 border border-slate-200">{t('students.col_matricule')}</th>
-                  <th className="p-2 border border-slate-200">{t('students.col_name')}</th>
-                  <th className="p-2 border border-slate-200">{t('students.parent_name')}</th>
-                  <th className="p-2 border border-slate-200">{t('students.parent_phone')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rosterStudents.map(s => (
-                  <tr key={s.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="p-2 border border-slate-200 font-mono font-bold text-slate-700">{s.matricule}</td>
-                    <td className="p-2 border border-slate-200 font-bold text-slate-900">{s.first_name_ar} {s.last_name_ar}</td>
-                    <td className="p-2 border border-slate-200">{s.parent_name}</td>
-                    <td className="p-2 border border-slate-200 font-mono">{s.parent_phone}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
       </Modal>
 
       {/* =========================================================================
@@ -546,6 +582,21 @@ export default function Classes() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* =========================================================================
+          MODAL: ROOMS / SALLES MANAGER
+          ========================================================================= */}
+      <Modal
+        isOpen={isRoomsModalOpen}
+        onClose={() => {
+          setIsRoomsModalOpen(false);
+          fetchRooms();
+        }}
+        title={t('rooms.title', 'إدارة القاعات الدراسية')}
+        maxWidth="max-w-4xl"
+      >
+        <RoomsManager onRoomsChange={setRooms} />
       </Modal>
     </div>
   );

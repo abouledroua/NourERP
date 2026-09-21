@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useLocation } from 'react-router-dom';
 import {
   ArrowRight,
   ArrowLeft,
+  ArrowRightLeft,
   GraduationCap,
   User,
   Phone,
@@ -26,7 +27,8 @@ import {
   Edit,
   Plus,
   Trash2,
-  Users
+  Users,
+  Check
 } from 'lucide-react';
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -35,10 +37,13 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import Modal from '../components/Modal';
 import PhotoUpload from '../components/PhotoUpload';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
+import ArabicInput from '../components/ArabicInput';
+import DateInput from '../components/DateInput';
 
 export default function StudentDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, isRTL } = useLanguage();
   const { settings, tracks } = useSettings();
   const toast = useToast();
@@ -57,6 +62,27 @@ export default function StudentDetails() {
     remarks: ''
   });
   const [assigningClass, setAssigningClass] = useState(false);
+
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferFormData, setTransferFormData] = useState({
+    from_class_id: '',
+    from_class_name: '',
+    to_class_id: '',
+    remarks: ''
+  });
+  const [transferringClass, setTransferringClass] = useState(false);
+  const defaultParents = [
+    {
+      id: 1,
+      relationship: 'FATHER',
+      name: '',
+      phone: '',
+      email: '',
+      job: '',
+      is_primary: true
+    }
+  ];
+
   const [editFormData, setEditFormData] = useState({
     national_id: '',
     first_name_ar: '',
@@ -64,13 +90,16 @@ export default function StudentDetails() {
     first_name_en: '',
     last_name_en: '',
     gender: 'MALE',
-    birth_date: '2018-05-15',
+    birth_date: '',
     birth_place: '',
-    blood_group: 'O+',
+    blood_group: '',
     academic_track_id: '',
     status: 'ACTIVE',
+    parents: defaultParents,
     parent_name: '',
     parent_phone: '',
+    phone: '',
+    email: '',
     parent_email: '',
     parent_job: '',
     address: '',
@@ -78,6 +107,58 @@ export default function StudentDetails() {
     medical_notes: '',
     photo_url: ''
   });
+
+  const handleAddParent = () => {
+    const current = editFormData.parents || [];
+    const defaultRel = current.some(p => p.relationship === 'FATHER') ? 'MOTHER' : 'GUARDIAN';
+    setEditFormData({
+      ...editFormData,
+      parents: [
+        ...current,
+        {
+          id: Date.now(),
+          relationship: defaultRel,
+          name: '',
+          phone: '',
+          email: '',
+          job: '',
+          is_primary: current.length === 0
+        }
+      ]
+    });
+  };
+
+  const handleRemoveParent = (indexToRemove) => {
+    const current = [...(editFormData.parents || [])];
+    current.splice(indexToRemove, 1);
+    if (current.length > 0 && !current.some(p => p.is_primary)) {
+      current[0].is_primary = true;
+    }
+    if (current.length === 0) {
+      current.push({
+        id: Date.now(),
+        relationship: 'FATHER',
+        name: '',
+        phone: '',
+        email: '',
+        job: '',
+        is_primary: true
+      });
+    }
+    setEditFormData({ ...editFormData, parents: current });
+  };
+
+  const handleParentChange = (index, field, value) => {
+    const updated = [...(editFormData.parents || [])];
+    if (field === 'is_primary' && value === true) {
+      updated.forEach((p, i) => {
+        p.is_primary = (i === index);
+      });
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
+    setEditFormData({ ...editFormData, parents: updated });
+  };
 
   useEffect(() => {
     fetchStudentDossier();
@@ -111,9 +192,40 @@ export default function StudentDetails() {
     }
   };
 
+  useEffect(() => {
+    if (!loading && dossier?.student) {
+      const params = new URLSearchParams(location.search);
+      if (params.get('print') === 'true') {
+        setTimeout(() => {
+          window.print();
+        }, 500);
+      }
+    }
+  }, [loading, dossier, location.search]);
+
   const handleOpenEditModal = () => {
     if (!dossier?.student) return;
     const st = dossier.student;
+    const loadedParents = (dossier.guardians && dossier.guardians.length > 0)
+      ? dossier.guardians.map((g, idx) => ({
+          id: g.id || idx + 1,
+          relationship: g.relationship || 'FATHER',
+          name: g.name || '',
+          phone: g.phone || '',
+          email: g.email || '',
+          job: g.job || '',
+          is_primary: Boolean(g.is_primary)
+        }))
+      : [{
+          id: 1,
+          relationship: 'FATHER',
+          name: st.parent_name || '',
+          phone: st.parent_phone || '',
+          email: st.parent_email || '',
+          job: st.parent_job || '',
+          is_primary: true
+        }];
+
     setEditFormData({
       national_id: st.national_id || '',
       first_name_ar: st.first_name_ar || '',
@@ -121,13 +233,16 @@ export default function StudentDetails() {
       first_name_en: st.first_name_en || '',
       last_name_en: st.last_name_en || '',
       gender: st.gender || 'MALE',
-      birth_date: st.birth_date ? st.birth_date.split('T')[0] : '2018-05-15',
+      birth_date: st.birth_date ? st.birth_date.split('T')[0] : '',
       birth_place: st.birth_place || '',
-      blood_group: st.blood_group || 'O+',
+      blood_group: st.blood_group || '',
       academic_track_id: st.academic_track_id || '',
       status: st.status || 'ACTIVE',
+      parents: loadedParents,
       parent_name: st.parent_name || '',
       parent_phone: st.parent_phone || '',
+      phone: st.phone || '',
+      email: st.email || '',
       parent_email: st.parent_email || '',
       parent_job: st.parent_job || '',
       address: st.address || '',
@@ -141,22 +256,71 @@ export default function StudentDetails() {
   const handleAssignClass = async (e) => {
     e.preventDefault();
     if (!assignFormData.class_id) {
-      toast.error(t('toast.select_class_required', 'يرجى اختيار القسم أو الفوج'));
+      toast.error(t('toast.select_class_required', 'يرجى اختيار الفوج'));
       return;
     }
     try {
       setAssigningClass(true);
       const res = await api.post(`/students/${id}/classes`, assignFormData);
       if (res.success) {
-        toast.success(res.message || t('toast.assign_class_success', 'تم إلحاق التلميذ بهذا القسم بنجاح'));
+        toast.success(res.message || t('toast.assign_class_success', 'تم إلحاق التلميذ بهذا الفوج بنجاح'));
         setIsAssignModalOpen(false);
         setAssignFormData({ class_id: '', roll_number: '', remarks: '' });
         fetchStudentDossier();
       }
     } catch (err) {
-      toast.error(err.message || t('toast.assign_class_failed', 'فشل إلحاق التلميذ بالقسم'));
+      toast.error(err.message || t('toast.assign_class_failed', 'فشل إلحاق التلميذ بالفوج'));
     } finally {
       setAssigningClass(false);
+    }
+  };
+
+  const openTransferModal = (classItem) => {
+    setTransferFormData({
+      from_class_id: classItem.id || classItem.class_id,
+      from_class_name: classItem.name || classItem.class_name,
+      to_class_id: '',
+      remarks: classItem.remarks || ''
+    });
+    setIsTransferModalOpen(true);
+  };
+
+  const handleTransferClass = async (e) => {
+    e.preventDefault();
+    if (!transferFormData.to_class_id) {
+      toast.error(t('toast.select_class_required', 'يرجى اختيار الفوج الجديد'));
+      return;
+    }
+    const toClass = classes.find(c => c.id == transferFormData.to_class_id);
+    const toClassName = toClass ? toClass.name : '';
+
+    const confirmed = await confirm({
+      title: t('dialog.transfer_class_title', 'تحويل التلميذ إلى فوج آخر'),
+      message: t('dialog.transfer_class_msg', `هل أنت متأكد من تحويل التلميذ من فوج "${transferFormData.from_class_name}" إلى الفوج الجديد "${toClassName}"؟`),
+      confirmText: t('dialog.confirm_transfer', 'نعم، قم بالتحويل'),
+      cancelText: t('dialog.cancel_btn', 'تراجع'),
+      type: 'warning'
+    });
+
+    if (confirmed) {
+      try {
+        setTransferringClass(true);
+        const assignRes = await api.post(`/students/${id}/classes`, { 
+          class_id: transferFormData.to_class_id, 
+          remarks: transferFormData.remarks 
+        });
+        if (assignRes.success) {
+          await api.delete(`/students/${id}/classes/${transferFormData.from_class_id}`);
+          toast.success(t('toast.transfer_success', 'تم تحويل التلميذ بنجاح'));
+          setIsTransferModalOpen(false);
+          setTransferFormData({ from_class_id: '', from_class_name: '', to_class_id: '', remarks: '' });
+          fetchStudentDossier();
+        }
+      } catch (err) {
+        toast.error(err.message || t('toast.transfer_failed', 'فشل تحويل التلميذ'));
+      } finally {
+        setTransferringClass(false);
+      }
     }
   };
 
@@ -165,7 +329,7 @@ export default function StudentDetails() {
     const classId = classItem.id || classItem.class_id;
     const confirmed = await confirm({
       title: t('dialog.unassign_class_title', 'إلغاء قيد التلميذ من هذا الفوج'),
-      message: t('dialog.unassign_class_msg', { name: className }, `هل أنت متأكد من رغبتك في إلغاء قيد التلميذ من قسم "${className}"؟`),
+      message: t('dialog.unassign_class_msg', { name: className }, `هل أنت متأكد من رغبتك في إلغاء قيد التلميذ من فوج "${className}"؟`),
       confirmText: t('dialog.confirm_unassign_class', 'نعم، إلغاء القيد'),
       cancelText: t('dialog.cancel_btn', 'تراجع'),
       type: 'danger'
@@ -175,7 +339,7 @@ export default function StudentDetails() {
       try {
         const res = await api.delete(`/students/${id}/classes/${classId}`);
         if (res.success) {
-          toast.success(res.message || t('toast.unassign_class_success', 'تم إلغاء قيد التلميذ من هذا القسم'));
+          toast.success(res.message || t('toast.unassign_class_success', 'تم إلغاء قيد التلميذ من هذا الفوج'));
           fetchStudentDossier();
         }
       } catch (err) {
@@ -186,8 +350,37 @@ export default function StudentDetails() {
 
   const handleUpdateStudent = async (e) => {
     e.preventDefault();
+    const validParents = (editFormData.parents || []).map(p => ({
+      relationship: p.relationship || 'FATHER',
+      name: p.name ? p.name.trim() : '',
+      phone: p.phone ? p.phone.trim() : '',
+      email: p.email ? p.email.trim().toLowerCase() : '',
+      job: p.job ? p.job.trim() : '',
+      is_primary: Boolean(p.is_primary)
+    }));
+    const primaryG = validParents.find(p => p.is_primary) || validParents[0] || {};
+
+    const payload = {
+      ...editFormData,
+      first_name_en: editFormData.first_name_en ? editFormData.first_name_en.trim().toUpperCase() : '',
+      last_name_en: editFormData.last_name_en ? editFormData.last_name_en.trim().toUpperCase() : '',
+      email: editFormData.email ? editFormData.email.trim().toLowerCase() : '',
+      parents: validParents,
+      parent_name: primaryG.name || '',
+      parent_phone: primaryG.phone || '',
+      parent_email: primaryG.email || '',
+      parent_job: primaryG.job || ''
+    };
+    if (!payload.birth_date) {
+      toast.error(t('students.birth_date_required', 'تاريخ الميلاد إلزامي / Date de naissance obligatoire'));
+      return;
+    }
+    if (!payload.academic_track_id) {
+      toast.error(t('students.track_required', 'يرجى اختيار الطور التعليمي / Veuillez sélectionner un cycle'));
+      return;
+    }
     try {
-      const res = await api.put(`/students/${id}`, editFormData);
+      const res = await api.put(`/students/${id}`, payload);
       if (res.success) {
         toast.success(res.message || t('toast.student_updated', 'تم تحديث بيانات التلميذ بنجاح'));
         setIsEditModalOpen(false);
@@ -345,7 +538,7 @@ export default function StudentDetails() {
       {/* Hero Profile Card */}
       <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-xs relative overflow-hidden">
         <div className="absolute top-0 right-0 left-0 h-2 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600" />
-        
+
         <div className="flex flex-col md:flex-row items-center md:items-start gap-6 pt-2">
           {/* Student Photo / Avatar */}
           <div className="relative flex-shrink-0">
@@ -357,17 +550,15 @@ export default function StudentDetails() {
                 onError={(e) => { e.target.style.display = 'none'; }}
               />
             ) : (
-              <div className={`w-28 h-28 rounded-3xl border-4 border-white shadow-md flex items-center justify-center text-3xl font-black ${
-                student.gender === 'MALE'
+              <div className={`w-28 h-28 rounded-3xl border-4 border-white shadow-md flex items-center justify-center text-3xl font-black ${student.gender === 'MALE'
                   ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500/20'
                   : 'bg-pink-100 text-pink-700 ring-2 ring-pink-500/20'
-              }`}>
+                }`}>
                 {student.first_name_ar ? student.first_name_ar.charAt(0) : 'ط'}
               </div>
             )}
-            <span className={`absolute bottom-0 end-0 px-2 py-0.5 rounded-full text-[10px] font-bold border-2 border-white shadow-xs ${
-              student.gender === 'MALE' ? 'bg-blue-600 text-white' : 'bg-pink-600 text-white'
-            }`}>
+            <span className={`absolute bottom-0 end-0 px-2 py-0.5 rounded-full text-[10px] font-bold border-2 border-white shadow-xs ${student.gender === 'MALE' ? 'bg-blue-600 text-white' : 'bg-pink-600 text-white'
+              }`}>
               {student.gender === 'MALE' ? t('students.gender_male', 'ذكر') : t('students.gender_female', 'أنثى')}
             </span>
           </div>
@@ -406,14 +597,13 @@ export default function StudentDetails() {
               ) : (
                 <span className="px-3 py-1 rounded-xl font-bold bg-slate-100 text-slate-500 flex items-center gap-1.5">
                   <BookOpen className="w-3.5 h-3.5 text-slate-400" />
-                  {t('students.not_enrolled_in_class', 'غير مفرز في أي قسم')}
+                  {t('students.not_enrolled_in_class', 'غير مسجل في أي فوج')}
                 </span>
               )}
-              <span className={`px-3 py-1 rounded-xl font-bold ${
-                student.status === 'ACTIVE'
+              <span className={`px-3 py-1 rounded-xl font-bold ${student.status === 'ACTIVE'
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
                   : 'bg-slate-100 text-slate-600'
-              }`}>
+                }`}>
                 {student.status === 'ACTIVE' ? t('students.status_active', 'نشط مداوم') : student.status}
               </span>
               {Number(student.total_debt || 0) > 0 ? (
@@ -434,9 +624,8 @@ export default function StudentDetails() {
           <div className="grid grid-cols-2 gap-3 w-full md:w-auto flex-shrink-0">
             <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-center min-w-[110px]">
               <span className="text-[10px] text-slate-400 font-bold block mb-1">{t('students.attendance_rate', 'نسبة الحضور')}</span>
-              <span className={`text-lg font-black font-mono ${
-                attendanceRate >= 85 ? 'text-emerald-600' : attendanceRate >= 70 ? 'text-amber-600' : 'text-rose-600'
-              }`}>
+              <span className={`text-lg font-black font-mono ${attendanceRate >= 85 ? 'text-emerald-600' : attendanceRate >= 70 ? 'text-amber-600' : 'text-rose-600'
+                }`}>
                 {attendanceRate}%
               </span>
             </div>
@@ -454,11 +643,10 @@ export default function StudentDetails() {
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-bold overflow-x-auto">
         <button
           onClick={() => setActiveTab('overview')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${
-            activeTab === 'overview'
+          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'overview'
               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
+            }`}
         >
           <User className="w-4 h-4" />
           <span>{t('students.tab_overview', 'البيانات الشخصية والأكاديمية')}</span>
@@ -466,45 +654,40 @@ export default function StudentDetails() {
 
         <button
           onClick={() => setActiveTab('classes')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${
-            activeTab === 'classes'
+          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'classes'
               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
+            }`}
         >
           <BookOpen className="w-4 h-4" />
           <span>{t('students.tab_classes', 'الأقسام والأفواج')}</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-            activeTab === 'classes' ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 text-slate-700'
-          }`}>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'classes' ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 text-slate-700'
+            }`}>
             {assignedClasses?.length || 0}
           </span>
         </button>
 
         <button
           onClick={() => setActiveTab('grades')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${
-            activeTab === 'grades'
+          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'grades'
               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
+            }`}
         >
           <Award className="w-4 h-4" />
           <span>{t('students.tab_grades', 'النقاط وكشوف التقييم')}</span>
-          <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-            activeTab === 'grades' ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 text-slate-700'
-          }`}>
+          <span className={`px-2 py-0.5 rounded-full text-[10px] ${activeTab === 'grades' ? 'bg-emerald-700 text-emerald-100' : 'bg-slate-200 text-slate-700'
+            }`}>
             {grades?.length || 0}
           </span>
         </button>
 
         <button
           onClick={() => setActiveTab('attendance')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${
-            activeTab === 'attendance'
+          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'attendance'
               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
+            }`}
         >
           <Clock className="w-4 h-4" />
           <span>{t('students.tab_attendance', 'المواظبة والغيابات')}</span>
@@ -512,11 +695,10 @@ export default function StudentDetails() {
 
         <button
           onClick={() => setActiveTab('finance')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${
-            activeTab === 'finance'
+          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'finance'
               ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-          }`}
+            }`}
         >
           <Wallet className="w-4 h-4" />
           <span>{t('students.tab_finance', 'الاشتراكات والذمة المالية')}</span>
@@ -525,11 +707,10 @@ export default function StudentDetails() {
         {isPreschool && (
           <button
             onClick={() => setActiveTab('milestones')}
-            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${
-              activeTab === 'milestones'
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'milestones'
                 ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
                 : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-            }`}
+              }`}
           >
             <Sparkles className="w-4 h-4" />
             <span>{t('students.tab_milestones', 'التقييم النمائي للطفل')}</span>
@@ -552,7 +733,7 @@ export default function StudentDetails() {
                 {t('students.section_academic', 'المعلومات الأكاديمية والتمدرس')}
               </h3>
             </div>
-            
+
             <div className="space-y-3 text-xs">
               <div className="flex justify-between items-center py-1 border-b border-slate-50">
                 <span className="text-slate-500">{t('students.col_matricule')}:</span>
@@ -587,7 +768,7 @@ export default function StudentDetails() {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-slate-400 font-medium text-xs">{t('students.no_classes_assigned', 'غير مسجل في أي قسم حالياً')}</div>
+                  <div className="text-slate-400 font-medium text-xs">{t('students.no_classes_assigned', 'غير مسجل في أي فوج حالياً')}</div>
                 )}
               </div>
               {student.grade_level && (
@@ -654,48 +835,98 @@ export default function StudentDetails() {
 
           {/* Card: Guardian & Contacts */}
           <div className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-xs space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-              <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                <Phone className="w-4 h-4" />
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <Phone className="w-4 h-4" />
+                </div>
+                <h3 className="font-bold text-slate-800 text-sm">
+                  {t('students.section_parent', 'بيانات الأولياء والمراسلة')}
+                </h3>
               </div>
-              <h3 className="font-bold text-slate-800 text-sm">
-                {t('students.section_parent', 'بيانات الولي والمراسلة')}
-              </h3>
+              <button
+                onClick={handleOpenEditModal}
+                className="text-xs text-emerald-700 hover:text-emerald-800 font-bold flex items-center gap-1"
+              >
+                <Edit className="w-3.5 h-3.5" />
+                <span>{t('students.edit', 'تعديل')}</span>
+              </button>
             </div>
 
-            <div className="space-y-3 text-xs">
-              <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                <span className="text-slate-500">{t('students.parent_name', 'اسم ولقب الولي')}:</span>
-                <strong className="font-bold text-slate-900">{student.parent_name}</strong>
-              </div>
-              <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                <span className="text-slate-500">{t('students.parent_phone', 'رقم الهاتف')}:</span>
-                <a
-                  href={`tel:${student.parent_phone}`}
-                  className="font-mono font-bold text-emerald-700 hover:underline flex items-center gap-1"
-                  dir="ltr"
-                >
-                  <Phone className="w-3 h-3 text-emerald-600" />
-                  {student.parent_phone}
-                </a>
-              </div>
-              {student.parent_email && (
-                <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                  <span className="text-slate-500">{t('students.parent_email', 'البريد الإلكتروني')}:</span>
-                  <a
-                    href={`mailto:${student.parent_email}`}
-                    className="font-mono text-slate-700 hover:text-emerald-700 truncate max-w-[180px]"
-                  >
-                    {student.parent_email}
-                  </a>
+            {/* List of Multiple Guardians */}
+            <div className="space-y-3">
+              {((dossier.guardians && dossier.guardians.length > 0)
+                ? dossier.guardians
+                : (student.parent_name ? [{
+                    relationship: 'FATHER',
+                    name: student.parent_name,
+                    phone: student.parent_phone,
+                    email: student.parent_email,
+                    job: student.parent_job,
+                    is_primary: 1
+                  }] : [])
+              ).map((guardian, gIdx) => (
+                <div key={guardian.id || gIdx} className="p-3 bg-slate-50/80 border border-slate-200/70 rounded-2xl space-y-2 text-xs">
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-200/60 pb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-slate-800">
+                        {guardian.relationship === 'FATHER' ? t('students.rel_father', 'الأب')
+                          : guardian.relationship === 'MOTHER' ? t('students.rel_mother', 'الأم')
+                          : guardian.relationship === 'GUARDIAN' ? t('students.rel_guardian', 'الولي القانوني')
+                          : t('students.rel_other', 'آخر')}
+                      </span>
+                      {Boolean(guardian.is_primary) && (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                          {t('students.primary_tag', 'رئيسي')}
+                        </span>
+                      )}
+                    </div>
+                    <strong className="font-bold text-slate-900">{guardian.name || '-'}</strong>
+                  </div>
+
+                  <div className="space-y-1.5 pt-0.5">
+                    {guardian.phone && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">{t('students.parent_phone', 'الهاتف')}:</span>
+                        <a
+                          href={`tel:${guardian.phone}`}
+                          className="font-mono font-bold text-emerald-700 hover:underline flex items-center gap-1"
+                          dir="ltr"
+                        >
+                          <Phone className="w-3 h-3 text-emerald-600" />
+                          {guardian.phone}
+                        </a>
+                      </div>
+                    )}
+                    {guardian.email && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500">{t('students.parent_email', 'البريد')}:</span>
+                        <a
+                          href={`mailto:${guardian.email}`}
+                          className="font-mono text-blue-700 hover:underline truncate max-w-[170px]"
+                        >
+                          {guardian.email}
+                        </a>
+                      </div>
+                    )}
+                    {guardian.job && (
+                      <div className="flex items-center justify-between text-slate-600">
+                        <span className="text-slate-500">{t('students.parent_job', 'المهنة')}:</span>
+                        <span className="font-medium text-slate-800">{guardian.job}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {(!dossier.guardians || dossier.guardians.length === 0) && !student.parent_name && (
+                <div className="text-center py-2 text-slate-400 text-xs">
+                  {t('students.no_parents_registered', 'لم يتم تسجيل بيانات الولي')}
                 </div>
               )}
-              {student.parent_job && (
-                <div className="flex justify-between items-center py-1 border-b border-slate-50">
-                  <span className="text-slate-500">{t('students.parent_job', 'مهنة الولي')}:</span>
-                  <span className="font-bold text-slate-800">{student.parent_job}</span>
-                </div>
-              )}
+            </div>
+
+            <div className="space-y-2 text-xs pt-2 border-t border-slate-100">
               <div className="py-1 border-b border-slate-50">
                 <span className="text-slate-500 block mb-0.5">{t('students.address', 'العنوان السكني')}:</span>
                 <span className="font-medium text-slate-800">{student.address || '-'}</span>
@@ -736,7 +967,7 @@ export default function StudentDetails() {
                   {t('students.classes_section_title', 'الأقسام والأفواج المسجل بها التلميذ')}
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  {t('students.classes_section_desc', 'يمكن للتلميذ الالتحاق بأكثر من قسم بالتوازي (مثلاً: القسم العام، حلقة تحفيظ، نادي اللغات أو الدعم)')}
+                  {t('students.classes_section_desc', 'يمكن للتلميذ الالتحاق بأكثر من فوج بالتوازي (مثلاً: الفوج العام، حلقة تحفيظ، نادي اللغات أو الدعم)')}
                 </p>
               </div>
             </div>
@@ -746,7 +977,7 @@ export default function StudentDetails() {
               className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-2xl transition-all shadow-sm shadow-emerald-600/20"
             >
               <Plus className="w-4 h-4" />
-              <span>{t('students.assign_new_class_btn', 'إلحاق بقسم / فوج جديد')}</span>
+              <span>{t('students.assign_new_class_btn', 'إلحاق بفوج جديد')}</span>
             </button>
           </div>
 
@@ -758,14 +989,14 @@ export default function StudentDetails() {
               </div>
               <h4 className="font-bold text-slate-800 text-sm mb-1">{t('students.no_classes_empty_title', 'لا توجد أقسام مسجلة لهذا التلميذ حالياً')}</h4>
               <p className="text-xs text-slate-500 mb-6">
-                {t('students.no_classes_empty_desc', 'قم بإلحاق التلميذ بقسم نظامي أو فوج دراسي للبدء في تتبع درجاته، غياباته وجدوله.')}
+                {t('students.no_classes_empty_desc', 'قم بإلحاق التلميذ بفوج دراسي للبدء في تتبع درجاته، غياباته وجدوله.')}
               </p>
               <button
                 onClick={() => setIsAssignModalOpen(true)}
                 className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-2xl transition-all shadow-md shadow-emerald-600/20"
               >
                 <Plus className="w-4 h-4" />
-                <span>{t('students.assign_class_now', 'إلحاق بقسم الآن')}</span>
+                <span>{t('students.assign_class_now', 'إلحاق بفوج الآن')}</span>
               </button>
             </div>
           ) : (
@@ -784,11 +1015,10 @@ export default function StudentDetails() {
                         <span className="px-2.5 py-1 rounded-xl text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60">
                           {ac.track_name_ar || t('tracks.general_track', 'مسار تعليمي')}
                         </span>
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
-                          ac.enrollment_status === 'ACTIVE'
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${ac.enrollment_status === 'ACTIVE'
                             ? 'bg-emerald-50 text-emerald-700'
                             : 'bg-slate-100 text-slate-600'
-                        }`}>
+                          }`}>
                           {ac.enrollment_status === 'ACTIVE' ? t('students.enrollment_status_active', 'قيد نشط') : ac.enrollment_status}
                         </span>
                       </div>
@@ -798,8 +1028,12 @@ export default function StudentDetails() {
                         <div className="w-9 h-9 rounded-xl bg-emerald-100/70 text-emerald-700 flex items-center justify-center flex-shrink-0">
                           <BookOpen className="w-4 h-4" />
                         </div>
-                        <div>
-                          <h4 className="font-extrabold text-slate-900 text-sm leading-tight">
+                        <div 
+                          className="cursor-pointer hover:opacity-80 transition-opacity group" 
+                          onClick={() => navigate(`/classes/${ac.class_id || ac.id}`)}
+                          title={t('students.click_to_view_class', 'انقر لعرض تفاصيل الفوج')}
+                        >
+                          <h4 className="font-extrabold text-slate-900 text-sm leading-tight group-hover:text-emerald-700 transition-colors">
                             {className}
                           </h4>
                           {ac.academic_year_name && (
@@ -852,15 +1086,33 @@ export default function StudentDetails() {
                     </div>
 
                     {/* Card Actions */}
-                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-end">
+                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
                       <button
                         type="button"
-                        onClick={() => handleRemoveClass(ac)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all"
+                        onClick={() => window.print()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 border border-transparent hover:border-slate-200 transition-all"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>{t('students.unassign_class_btn', 'إلغاء الإلحاق بالفوج')}</span>
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>{t('students.print_dossier', 'طباعة الملف')}</span>
                       </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openTransferModal(ac)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-all"
+                        >
+                          <ArrowRightLeft className="w-3.5 h-3.5" />
+                          <span>{t('students.transfer_class_btn', 'تحويل الفوج')}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveClass(ac)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>{t('students.unassign_class_btn', 'إلغاء الإلحاق بالفوج')}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -933,9 +1185,8 @@ export default function StudentDetails() {
                             {g.coefficient || 1}
                           </td>
                           <td className="py-3 px-4 text-center">
-                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold font-mono ${
-                              isPassing ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-                            }`}>
+                            <span className={`inline-block px-2.5 py-0.5 rounded-full text-[11px] font-bold font-mono ${isPassing ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                              }`}>
                               {percentage}%
                             </span>
                           </td>
@@ -1008,9 +1259,8 @@ export default function StudentDetails() {
             </div>
             <div className="text-center sm:text-right">
               <span className="text-xs text-slate-300 block mb-1">{t('students.pending_amount_to_pay', 'المستحقات المتبقية للدفع')}</span>
-              <span className={`text-2xl font-black font-mono ${
-                Number(student.total_debt || 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
-              }`}>
+              <span className={`text-2xl font-black font-mono ${Number(student.total_debt || 0) > 0 ? 'text-rose-400' : 'text-emerald-400'
+                }`}>
                 {formatCurrency(student.total_debt || 0, settings.currency)}
               </span>
             </div>
@@ -1127,8 +1377,27 @@ export default function StudentDetails() {
         onClose={() => setIsEditModalOpen(false)}
         title={`${t('students.edit', 'تعديل بيانات التلميذ')}: ${student.first_name_ar} ${student.last_name_ar} (${student.matricule})`}
         maxWidth="max-w-3xl"
+        headerActions={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsEditModalOpen(false)}
+              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+            >
+              {t('common.cancel', 'إلغاء')}
+            </button>
+            <button
+              type="submit"
+              form="studentEditModalForm"
+              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs shadow-emerald-600/30 transition-all flex items-center gap-1.5"
+            >
+              <Check className="w-3.5 h-3.5" />
+              {t('common.save_changes', 'تحديث البيانات')}
+            </button>
+          </div>
+        }
       >
-        <form onSubmit={handleUpdateStudent} className="space-y-4">
+        <form id="studentEditModalForm" onSubmit={handleUpdateStudent} className="space-y-4">
           {/* Photo Upload Component */}
           <PhotoUpload
             photoUrl={editFormData.photo_url}
@@ -1147,22 +1416,20 @@ export default function StudentDetails() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.first_name_ar')} *</label>
-                <input
-                  type="text"
+                <ArabicInput
                   required
                   value={editFormData.first_name_ar}
                   onChange={e => setEditFormData({ ...editFormData, first_name_ar: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  placeholder={t('students.first_name_placeholder', 'يونس')}
                 />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.last_name_ar')} *</label>
-                <input
-                  type="text"
+                <ArabicInput
                   required
                   value={editFormData.last_name_ar}
                   onChange={e => setEditFormData({ ...editFormData, last_name_ar: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  placeholder={t('students.last_name_placeholder', 'المنصوري')}
                 />
               </div>
             </div>
@@ -1176,8 +1443,9 @@ export default function StudentDetails() {
                 <input
                   type="text"
                   value={editFormData.first_name_en}
-                  onChange={e => setEditFormData({ ...editFormData, first_name_en: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  onChange={e => setEditFormData({ ...editFormData, first_name_en: e.target.value.toUpperCase() })}
+                  placeholder="ex: YOUNES"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none uppercase font-semibold"
                 />
               </div>
               <div>
@@ -1187,8 +1455,9 @@ export default function StudentDetails() {
                 <input
                   type="text"
                   value={editFormData.last_name_en}
-                  onChange={e => setEditFormData({ ...editFormData, last_name_en: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  onChange={e => setEditFormData({ ...editFormData, last_name_en: e.target.value.toUpperCase() })}
+                  placeholder="ex: MANSOURI"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none uppercase font-semibold"
                 />
               </div>
             </div>
@@ -1207,12 +1476,10 @@ export default function StudentDetails() {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.birth_date')} *</label>
-                <input
-                  type="date"
+                <DateInput
                   required
                   value={editFormData.birth_date}
                   onChange={e => setEditFormData({ ...editFormData, birth_date: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 />
               </div>
               <div>
@@ -1236,17 +1503,55 @@ export default function StudentDetails() {
               </div>
             </div>
 
-            {/* National ID */}
+            {/* Student Phone, Email & National ID */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {t('students.student_phone', 'رقم هاتف التلميذ')}
+                </label>
+                <input
+                  type="text"
+                  value={editFormData.phone || ''}
+                  onChange={e => setEditFormData({ ...editFormData, phone: e.target.value })}
+                  placeholder="0550 00 00 00"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {t('students.student_email', 'البريد الإلكتروني للتلميذ')}
+                </label>
+                <input
+                  type="email"
+                  value={editFormData.email || ''}
+                  onChange={e => setEditFormData({ ...editFormData, email: e.target.value })}
+                  placeholder="eleve@example.com"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {t('students.national_id', 'رقم التعريف الوطني (NIN)')}
+                </label>
+                <input
+                  type="text"
+                  value={editFormData.national_id || ''}
+                  onChange={e => setEditFormData({ ...editFormData, national_id: e.target.value })}
+                  placeholder={t('students.nin_placeholder', '18 رقماً أو رقم بطاقة التعريف الوطنية')}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Residential Address */}
             <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                {t('students.national_id', 'رقم التعريف الوطني (NIN)')}
-              </label>
-              <input
-                type="text"
-                value={editFormData.national_id || ''}
-                onChange={e => setEditFormData({ ...editFormData, national_id: e.target.value })}
-                placeholder={t('students.nin_placeholder', '18 رقماً أو رقم بطاقة التعريف الوطنية')}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.address', 'العنوان السكني')}</label>
+              <textarea
+                rows={2}
+                value={editFormData.address || ''}
+                onChange={e => setEditFormData({ ...editFormData, address: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                placeholder={t('students.address_placeholder', 'الحي، البلدية، الولاية')}
               />
             </div>
           </div>
@@ -1265,7 +1570,7 @@ export default function StudentDetails() {
                   onChange={e => setEditFormData({ ...editFormData, academic_track_id: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
-                  <option value="">{t('students.filter_track')}</option>
+                  <option value="" disabled>{t('students.select_track', '-- اختر الطور التعليمي --')}</option>
                   {tracks.map(tItem => (
                     <option key={tItem.id} value={tItem.id}>
                       {isRTL ? tItem.name_ar : (tItem.name_fr || tItem.name_en || tItem.name_ar)}
@@ -1290,87 +1595,180 @@ export default function StudentDetails() {
             </div>
           </div>
 
-          {/* Parent Guardian Details */}
+          {/* Health & Medical Information */}
           <div className="pt-2 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-3">
-              {t('students.section_parent', 'بيانات الولي والمراسلة')}
+            <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-2">
+              {t('students.section_medical', 'الحالة الصحية والملاحظات الطبية')}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.parent_name', 'اسم ولقب الولي')} *</label>
-                <input
-                  type="text"
-                  required
-                  value={editFormData.parent_name}
-                  onChange={e => setEditFormData({ ...editFormData, parent_name: e.target.value })}
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.maladies', 'الأمراض (إن وجدت)')}</label>
+                <textarea
+                  rows={2}
+                  value={editFormData.maladies || ''}
+                  onChange={e => setEditFormData({ ...editFormData, maladies: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  placeholder={t('students.maladies_placeholder', 'سجل الأمراض أو الحالات المزمنة هنا...')}
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.parent_phone', 'رقم الهاتف')} *</label>
-                <input
-                  type="text"
-                  required
-                  value={editFormData.parent_phone}
-                  onChange={e => setEditFormData({ ...editFormData, parent_phone: e.target.value })}
+                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.medical_notes', 'ملاحظات صحية أو حساسية')}</label>
+                <textarea
+                  rows={2}
+                  value={editFormData.medical_notes || ''}
+                  onChange={e => setEditFormData({ ...editFormData, medical_notes: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  placeholder={t('students.medical_notes_placeholder', 'حساسية، أمراض مزمنة، أدوية خاصة إن وجدت...')}
                 />
               </div>
             </div>
+          </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
+          {/* Parent Guardian Details (Multi-parent Support) */}
+          <div className="pt-2 border-t border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.parent_email', 'البريد الإلكتروني للولي')}</label>
-                <input
-                  type="email"
-                  value={editFormData.parent_email || ''}
-                  onChange={e => setEditFormData({ ...editFormData, parent_email: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                />
+                <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+                  {t('students.section_parent', 'بيانات الأولياء والمراسلة')}
+                </h4>
+                <p className="text-[11px] text-slate-400">
+                  {t('students.section_parent_desc', 'يمكنك إضافة معلومات أكثر من ولي أمر أو جهة اتصال (الأب، الأم، الولي الشرعي...)')}
+                </p>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.parent_job', 'مهنة الولي')}</label>
-                <input
-                  type="text"
-                  value={editFormData.parent_job || ''}
-                  onChange={e => setEditFormData({ ...editFormData, parent_job: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                  placeholder={t('students.parent_job_placeholder', 'مهندس، تاجر، موظف...')}
-                />
-              </div>
+              <button
+                type="button"
+                onClick={handleAddParent}
+                className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('students.add_parent', 'إضافة ولي أمر آخر')}</span>
+              </button>
             </div>
 
-            <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.address', 'العنوان السكني')}</label>
-              <input
-                type="text"
-                value={editFormData.address || ''}
-                onChange={e => setEditFormData({ ...editFormData, address: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder={t('students.address_placeholder', 'الحي، البلدية، الولاية')}
-              />
-            </div>
+            <div className="space-y-3">
+              {(editFormData.parents || []).map((parent, idx) => (
+                <div
+                  key={parent.id || idx}
+                  className={`p-3.5 rounded-2xl border transition-all ${
+                    parent.is_primary
+                      ? 'bg-emerald-50/40 border-emerald-200/80 ring-1 ring-emerald-500/10'
+                      : 'bg-slate-50/70 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-200/60">
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      <span className="text-xs font-bold text-slate-800">
+                        {parent.relationship === 'FATHER' ? t('students.rel_father', 'الأب')
+                          : parent.relationship === 'MOTHER' ? t('students.rel_mother', 'الأم')
+                          : parent.relationship === 'GUARDIAN' ? t('students.rel_guardian', 'الولي القانوني')
+                          : t('students.rel_other', 'آخر')}
+                      </span>
+                      {parent.is_primary && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white shadow-2xs">
+                          {t('students.primary_tag', 'رئيسي')}
+                        </span>
+                      )}
+                    </div>
 
-            <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.maladies', 'الأمراض (إن وجدت)')}</label>
-              <textarea
-                rows={2}
-                value={editFormData.maladies || ''}
-                onChange={e => setEditFormData({ ...editFormData, maladies: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder={t('students.maladies_placeholder', 'سجل الأمراض أو الحالات المزمنة هنا...')}
-              />
-            </div>
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+                        <input
+                          type="radio"
+                          name={`edit_primary_guardian_radio_${idx}`}
+                          checked={Boolean(parent.is_primary)}
+                          onChange={() => handleParentChange(idx, 'is_primary', true)}
+                          className="text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] font-medium text-slate-700">{t('students.is_primary_guardian', 'الولي الرئيسي')}</span>
+                      </label>
 
-            <div className="mt-3">
-              <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.medical_notes', 'ملاحظات صحية أو حساسية')}</label>
-              <textarea
-                rows={2}
-                value={editFormData.medical_notes || ''}
-                onChange={e => setEditFormData({ ...editFormData, medical_notes: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder={t('students.medical_notes_placeholder', 'حساسية، أمراض مزمنة، أدوية خاصة إن وجدت...')}
-              />
+                      {editFormData.parents.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveParent(idx)}
+                          className="p-1.5 hover:bg-rose-100 text-slate-400 hover:text-rose-600 rounded-lg transition-colors"
+                          title={t('students.remove_parent', 'حذف')}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_relationship', 'صلة القرابة')}
+                      </label>
+                      <select
+                        value={parent.relationship || 'FATHER'}
+                        onChange={e => handleParentChange(idx, 'relationship', e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      >
+                        <option value="FATHER">{t('students.rel_father', 'الأب')}</option>
+                        <option value="MOTHER">{t('students.rel_mother', 'الأم')}</option>
+                        <option value="GUARDIAN">{t('students.rel_guardian', 'الولي القانوني')}</option>
+                        <option value="OTHER">{t('students.rel_other', 'آخر')}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_name', 'اسم ولقب الولي')}
+                      </label>
+                      <input
+                        type="text"
+                        value={parent.name || ''}
+                        onChange={e => handleParentChange(idx, 'name', e.target.value)}
+                        placeholder="ex: Mohamed Mansouri"
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_phone', 'رقم الهاتف')}
+                      </label>
+                      <input
+                        type="text"
+                        value={parent.phone || ''}
+                        onChange={e => handleParentChange(idx, 'phone', e.target.value)}
+                        placeholder="0550 00 00 00"
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_job', 'المهنة')}
+                      </label>
+                      <input
+                        type="text"
+                        value={parent.job || ''}
+                        onChange={e => handleParentChange(idx, 'job', e.target.value)}
+                        placeholder={t('students.parent_job_placeholder', 'مهندس، تاجر، موظف...')}
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_email', 'البريد الإلكتروني')}
+                      </label>
+                      <input
+                        type="email"
+                        value={parent.email || ''}
+                        onChange={e => handleParentChange(idx, 'email', e.target.value)}
+                        placeholder="parent@example.com"
+                        className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -1398,7 +1796,7 @@ export default function StudentDetails() {
       <Modal
         isOpen={isAssignModalOpen}
         onClose={() => setIsAssignModalOpen(false)}
-        title={t('students.modal_assign_class_title', 'إلحاق التلميذ بقسم أو فوج دراسي')}
+        title={t('students.modal_assign_class_title', 'إلحاق التلميذ بفوج دراسي')}
         maxWidth="max-w-md"
       >
         <form onSubmit={handleAssignClass} className="space-y-4">
@@ -1416,7 +1814,7 @@ export default function StudentDetails() {
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              {t('students.select_class_label', 'اختر القسم أو الفوج *')}
+              {t('students.select_class_label', 'اختر الفوج *')}
             </label>
             <select
               required
@@ -1424,7 +1822,7 @@ export default function StudentDetails() {
               onChange={e => setAssignFormData({ ...assignFormData, class_id: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium"
             >
-              <option value="">{t('students.select_class_placeholder', '-- اختر الفوج أو القسم --')}</option>
+              <option value="">{t('students.select_class_placeholder', '-- اختر الفوج --')}</option>
               {classes.map(c => {
                 const isAlready = assignedClasses?.some(ac => (ac.id || ac.class_id) == c.id);
                 return (
@@ -1438,7 +1836,7 @@ export default function StudentDetails() {
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              رقم المقعد أو القيد في القسم (اختياري)
+              رقم القيد في الفوج (اختياري)
             </label>
             <input
               type="text"
@@ -1476,7 +1874,86 @@ export default function StudentDetails() {
               className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
-              <span>{assigningClass ? 'جاري الإلحاق...' : 'تأكيد الإلحاق بالقسم'}</span>
+              <span>{assigningClass ? 'جاري الإلحاق...' : 'تأكيد الإلحاق بالفوج'}</span>
+            </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* =========================================================================
+          MODAL: TRANSFER STUDENT TO ANOTHER CLASS
+          ========================================================================= */}
+      <Modal
+        isOpen={isTransferModalOpen}
+        onClose={() => setIsTransferModalOpen(false)}
+        title={t('students.modal_transfer_class_title', 'تحويل التلميذ إلى فوج آخر')}
+        maxWidth="max-w-md"
+      >
+        <form onSubmit={handleTransferClass} className="space-y-4">
+          <div className="p-3 bg-blue-50/70 border border-blue-100 rounded-2xl flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0">
+              <ArrowRightLeft className="w-4 h-4" />
+            </div>
+            <div className="text-xs">
+              <span className="block font-bold text-blue-900">
+                {student.first_name_ar} {student.last_name_ar}
+              </span>
+              <span className="text-blue-700 font-mono text-[11px]">{t('students.from_class', 'من الفوج:')} {transferFormData.from_class_name}</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              {t('students.select_target_class_label', 'اختر الفوج الجديد *')}
+            </label>
+            <select
+              required
+              value={transferFormData.to_class_id}
+              onChange={e => setTransferFormData({ ...transferFormData, to_class_id: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium"
+            >
+              <option value="">{t('students.select_target_class_placeholder', '-- اختر الفوج الجديد --')}</option>
+              {classes
+                .filter(c => c.id != transferFormData.from_class_id)
+                .map(c => {
+                  const isAlready = assignedClasses?.some(ac => (ac.id || ac.class_id) == c.id);
+                  return (
+                    <option key={c.id} value={c.id} disabled={isAlready}>
+                      {c.name} {c.grade_level ? `(${c.grade_level})` : ''} {c.track_name_ar ? `- ${c.track_name_ar}` : ''} {isAlready ? t('students.class_already_enrolled', ' (مسجل به بالفعل)') : ''}
+                    </option>
+                  );
+              })}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              {t('students.transfer_remarks_label', 'ملاحظات التحويل (اختياري)')}
+            </label>
+            <textarea
+              rows="2"
+              value={transferFormData.remarks}
+              onChange={e => setTransferFormData({ ...transferFormData, remarks: e.target.value })}
+              placeholder={t('students.transfer_remarks_placeholder', 'سبب التحويل، ملاحظات...')}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsTransferModalOpen(false)}
+              className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              {t('common.cancel', 'إلغاء')}
+            </button>
+            <button
+              type="submit"
+              disabled={transferringClass}
+              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-blue-600/20 flex items-center gap-1.5"
+            >
+              <ArrowRightLeft className="w-4 h-4" />
+              <span>{transferringClass ? t('students.transferring', 'جاري التحويل...') : t('students.confirm_transfer', 'تأكيد التحويل')}</span>
             </button>
           </div>
         </form>

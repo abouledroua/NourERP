@@ -45,6 +45,38 @@ export async function listClasses(req, res) {
   }
 }
 
+export async function getClassById(req, res) {
+  const { id } = req.params;
+  try {
+    const [cls] = await query(`
+      SELECT 
+        c.*,
+        y.name AS academic_year_name,
+        t.code AS track_code,
+        t.name_ar AS track_name_ar,
+        t.name_en AS track_name_en,
+        CONCAT(tea.first_name, ' ', tea.last_name) AS homeroom_teacher_name,
+        tea.phone AS homeroom_teacher_phone,
+        COUNT(s.id) AS enrolled_students_count
+      FROM classes c
+      JOIN academic_years y ON c.academic_year_id = y.id
+      JOIN academic_tracks t ON c.academic_track_id = t.id
+      LEFT JOIN teachers tea ON c.homeroom_teacher_id = tea.id
+      LEFT JOIN students s ON s.current_class_id = c.id AND s.status = 'ACTIVE'
+      WHERE c.id = ?
+      GROUP BY c.id
+    `, [id]);
+    
+    if (!cls) {
+      return res.status(404).json({ success: false, message: 'Class not found' });
+    }
+    
+    res.json({ success: true, data: cls });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 export async function getClassRoster(req, res) {
   const { id } = req.params;
   try {
@@ -73,18 +105,23 @@ export async function getClassRoster(req, res) {
 }
 
 export async function createClass(req, res) {
-  const { academic_year_id, academic_track_id, name, grade_level, section, capacity, homeroom_teacher_id, classroom, status } = req.body;
+  const { academic_year_id, academic_track_id, name, grade_level, section, capacity, pricing_type, pricing_value, schedule_info, homeroom_teacher_id, classroom, status } = req.body;
   if (!academic_year_id || !academic_track_id || !name || !grade_level) {
     return res.status(400).json({ success: false, message: 'يرجى ملء كافة بيانات القسم الإلزامية / Required fields missing' });
   }
 
   try {
+    const year = new Date().getFullYear();
+    const [maxRow] = await query('SELECT COUNT(*) AS total FROM classes WHERE academic_year_id = ?', [academic_year_id]);
+    const nextNum = (maxRow.total + 1).toString().padStart(3, '0');
+    const matricule = `GRP-${year}-${nextNum}`;
+
     const result = await query(`
-      INSERT INTO classes (academic_year_id, academic_track_id, name, grade_level, section, capacity, homeroom_teacher_id, classroom, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO classes (matricule, academic_year_id, academic_track_id, name, grade_level, section, capacity, pricing_type, pricing_value, schedule_info, homeroom_teacher_id, classroom, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      academic_year_id, academic_track_id, name, grade_level, section || 'A',
-      capacity || 30, homeroom_teacher_id || null, classroom || null, status || 'ACTIVE'
+      matricule, academic_year_id, academic_track_id, name, grade_level, section || 'A',
+      capacity || 30, pricing_type || 'MONTH_BASED', pricing_value || 0, schedule_info || null, homeroom_teacher_id || null, classroom || null, status || 'ACTIVE'
     ]);
 
     await logAudit(req.user?.id, req.deviceId, req.workstationName, 'CREATE', 'classes', result.insertId, { name, grade_level }, req.ip);
@@ -96,14 +133,14 @@ export async function createClass(req, res) {
 
 export async function updateClass(req, res) {
   const { id } = req.params;
-  const { name, grade_level, section, capacity, homeroom_teacher_id, classroom, status } = req.body;
+  const { name, grade_level, section, capacity, pricing_type, pricing_value, schedule_info, homeroom_teacher_id, classroom, status } = req.body;
 
   try {
     await query(`
       UPDATE classes 
-      SET name = ?, grade_level = ?, section = ?, capacity = ?, homeroom_teacher_id = ?, classroom = ?, status = ?
+      SET name = ?, grade_level = ?, section = ?, capacity = ?, pricing_type = ?, pricing_value = ?, schedule_info = ?, homeroom_teacher_id = ?, classroom = ?, status = ?
       WHERE id = ?
-    `, [name, grade_level, section, capacity, homeroom_teacher_id || null, classroom || null, status, id]);
+    `, [name, grade_level, section, capacity, pricing_type || 'MONTH_BASED', pricing_value || 0, schedule_info || null, homeroom_teacher_id || null, classroom || null, status, id]);
 
     await logAudit(req.user?.id, req.deviceId, req.workstationName, 'UPDATE', 'classes', id, req.body, req.ip);
     res.json({ success: true, message: 'تم تعديل بيانات القسم بنجاح / Class updated successfully' });

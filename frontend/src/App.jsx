@@ -11,6 +11,7 @@ import Dashboard from './pages/Dashboard';
 import Students from './pages/Students';
 import StudentDetails from './pages/StudentDetails';
 import Classes from './pages/Classes';
+import ClassDetails from './pages/ClassDetails';
 import Teachers from './pages/Teachers';
 import Timetable from './pages/Timetable';
 import Grades from './pages/Grades';
@@ -19,6 +20,10 @@ import Finance from './pages/Finance';
 import InventoryPOS from './pages/InventoryPOS';
 import AuditLogs from './pages/AuditLogs';
 import Settings from './pages/Settings';
+import Rooms from './pages/Rooms';
+import Announcements from './pages/Announcements';
+import ParentLogin from './pages/ParentLogin';
+import ParentPortal from './pages/ParentPortal';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -47,6 +52,8 @@ export default function App() {
             <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/parent-login" element={<ParentLogin />} />
+                <Route path="/parent" element={<ParentPortal />} />
 
                 <Route path="/" element={
                   <ProtectedRoute>
@@ -57,12 +64,15 @@ export default function App() {
                   <Route path="students" element={<Students />} />
                   <Route path="students/:id" element={<StudentDetails />} />
                   <Route path="classes" element={<Classes />} />
+                  <Route path="classes/:id" element={<ClassDetails />} />
+                  <Route path="rooms" element={<Rooms />} />
                   <Route path="teachers" element={<Teachers />} />
                   <Route path="timetable" element={<Timetable />} />
                   <Route path="grades" element={<Grades />} />
                   <Route path="attendance" element={<Attendance />} />
                   <Route path="finance" element={<Finance />} />
                   <Route path="inventory" element={<InventoryPOS />} />
+                  <Route path="announcements" element={<Announcements />} />
                   <Route path="audit-logs" element={<AuditLogs />} />
                   <Route path="settings" element={<Settings />} />
                 </Route>

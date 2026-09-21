@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-2xl' }) {
+export default function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-2xl', headerActions = null }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen) onClose();
@@ -23,14 +23,18 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
       {/* Dialog Box */}
       <div className={`relative bg-white rounded-3xl shadow-2xl w-full ${maxWidth} overflow-hidden transform transition-all border border-slate-100 z-10 my-8`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-          <h3 className="text-lg font-bold text-slate-900">{title}</h3>
-          <button
-            onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-slate-100 bg-slate-50/70 gap-3">
+          <h3 className="text-base sm:text-lg font-bold text-slate-900 truncate">{title}</h3>
+          <div className="flex items-center gap-2 shrink-0">
+            {headerActions}
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Content */}

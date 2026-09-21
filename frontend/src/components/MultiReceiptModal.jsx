@@ -237,7 +237,7 @@ export default function MultiReceiptModal({ isOpen, onClose, selectedTransaction
                 <div className="text-center pb-3 border-b-2 border-slate-800">
                   <h3 className="font-black text-base text-slate-900">{settings.school_name_ar || t('app_name')}</h3>
                   <h4 className="font-bold text-xs text-slate-600">{t('voucher_print.summary_title')}</h4>
-                  <p className="text-[10px] text-slate-400 mt-1">{t('voucher_print.issue_date', { date: new Date().toLocaleDateString('fr-FR') })}</p>
+                  <p className="text-[10px] text-slate-400 mt-1">{t('voucher_print.issue_date', { date: formatDate(new Date()) })}</p>
                 </div>
 
                 <div className="overflow-x-auto">

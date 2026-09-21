@@ -116,6 +116,8 @@ CREATE TABLE IF NOT EXISTS teachers (
     qualification VARCHAR(100) NULL,
     hire_date DATE NULL,
     monthly_salary DECIMAL(10,2) DEFAULT 0.00,
+    hourly_rate DECIMAL(10,2) DEFAULT 0.00,
+    payment_type ENUM('MONTHLY', 'HOURLY') DEFAULT 'MONTHLY',
     status ENUM('ACTIVE', 'ON_LEAVE', 'RESIGNED', 'TERMINATED') DEFAULT 'ACTIVE',
     photo_url VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -135,12 +137,16 @@ CREATE TABLE IF NOT EXISTS subjects (
 
 CREATE TABLE IF NOT EXISTS classes (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    matricule VARCHAR(50) UNIQUE, -- Auto-generated group matricule (e.g. GRP-2026-0001)
     academic_year_id INT NOT NULL,
     academic_track_id INT NOT NULL,
     name VARCHAR(100) NOT NULL, -- e.g. 'القسم 1 تحضيري - أ' or 'السنة الأولى متوسط - فوج 2'
     grade_level VARCHAR(50) NOT NULL, -- 'KG1', 'KG2', '1AP', '2AP', '1AM', etc.
     section VARCHAR(20) DEFAULT 'A',
     capacity INT DEFAULT 30,
+    pricing_type ENUM('MONTH_BASED', 'SESSION_BASED', 'HOUR_BASED') DEFAULT 'MONTH_BASED',
+    pricing_value DECIMAL(10,2) DEFAULT 0.00,
+    schedule_info TEXT NULL,
     homeroom_teacher_id INT NULL,
     classroom VARCHAR(50) NULL,
     status ENUM('PENDING', 'ACTIVE', 'STOPPED', 'ARCHIVED') DEFAULT 'ACTIVE',
@@ -215,8 +221,10 @@ CREATE TABLE IF NOT EXISTS students (
     enrollment_date DATE NOT NULL,
     status ENUM('ACTIVE', 'TRANSFERRED', 'GRADUATED', 'SUSPENDED') DEFAULT 'ACTIVE',
     photo_url VARCHAR(255) NULL,
-    parent_name VARCHAR(100) NOT NULL,
-    parent_phone VARCHAR(30) NOT NULL,
+    parent_name VARCHAR(100) NULL,
+    parent_phone VARCHAR(30) NULL,
+    phone VARCHAR(30) NULL,
+    email VARCHAR(100) NULL,
     parent_email VARCHAR(100) NULL,
     parent_job VARCHAR(100) NULL,
     address TEXT NULL,
@@ -226,6 +234,21 @@ CREATE TABLE IF NOT EXISTS students (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (current_class_id) REFERENCES classes(id) ON DELETE SET NULL,
     FOREIGN KEY (academic_track_id) REFERENCES academic_tracks(id) ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS student_guardians (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    relationship VARCHAR(50) DEFAULT 'FATHER', -- 'FATHER', 'MOTHER', 'GUARDIAN', 'OTHER'
+    name VARCHAR(100) NOT NULL,
+    phone VARCHAR(30) NULL,
+    email VARCHAR(100) NULL,
+    job VARCHAR(100) NULL,
+    is_primary BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    INDEX idx_guardian_student (student_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS student_enrollments (
@@ -345,12 +368,14 @@ CREATE TABLE IF NOT EXISTS payments (
     payment_method ENUM('CASH', 'BANK_TRANSFER', 'CHEQUE', 'CARD') DEFAULT 'CASH',
     status ENUM('PAID', 'PARTIAL', 'EXEMPTED') DEFAULT 'PAID',
     covered_months JSON NULL, -- e.g. ["2026-09", "2026-10"]
+    account_id INT NULL,
     cashier_id INT NULL,
     notes VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
     FOREIGN KEY (fee_type_id) REFERENCES fee_types(id) ON DELETE RESTRICT,
     FOREIGN KEY (cashier_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (account_id) REFERENCES financial_accounts(id) ON DELETE SET NULL,
     INDEX idx_payment_date (payment_date),
     INDEX idx_payment_student (student_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -410,11 +435,13 @@ CREATE TABLE IF NOT EXISTS product_sale_payments (
     amount DECIMAL(10,2) NOT NULL,
     payment_date DATE NOT NULL,
     payment_method ENUM('CASH', 'BANK_TRANSFER', 'CHEQUE', 'CARD') DEFAULT 'CASH',
+    account_id INT NULL,
     cashier_id INT NULL,
     notes VARCHAR(255) NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (sale_id) REFERENCES product_sales(id) ON DELETE CASCADE,
-    FOREIGN KEY (cashier_id) REFERENCES users(id) ON DELETE SET NULL
+    FOREIGN KEY (cashier_id) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (account_id) REFERENCES financial_accounts(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS cash_transactions (
@@ -426,9 +453,68 @@ CREATE TABLE IF NOT EXISTS cash_transactions (
     description TEXT NOT NULL,
     payment_method ENUM('CASH', 'BANK_TRANSFER', 'CHEQUE') DEFAULT 'CASH',
     receipt_ref VARCHAR(100) NULL,
+    account_id INT NULL,
     performed_by INT NULL,
     transaction_date DATE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (performed_by) REFERENCES users(id) ON DELETE SET NULL,
+    FOREIGN KEY (account_id) REFERENCES financial_accounts(id) ON DELETE SET NULL,
     INDEX idx_cash_date (transaction_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------------------------
+-- 6. ANNOUNCEMENTS & PARENT NOTIFICATIONS
+-- -------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS announcements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(200) NOT NULL,
+    content TEXT NOT NULL,
+    priority ENUM('NORMAL', 'IMPORTANT', 'URGENT') DEFAULT 'NORMAL',
+    target_type ENUM('ALL', 'TRACK', 'CLASS', 'STUDENT') NOT NULL DEFAULT 'ALL',
+    target_id INT NULL,
+    author_id INT NULL,
+    expires_at DATE NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (author_id) REFERENCES users(id) ON DELETE SET NULL,
+    INDEX idx_announcement_target (target_type, target_id),
+    INDEX idx_announcement_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- -------------------------------------------------------------------------
+-- 7. FINANCE (ACCOUNTS & PAYMENTS)
+-- -------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS financial_accounts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    balance DECIMAL(12,2) DEFAULT 0.00,
+    currency VARCHAR(10) DEFAULT 'DZD',
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS account_transfers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    from_account_id INT NOT NULL,
+    to_account_id INT NOT NULL,
+    amount DECIMAL(12,2) NOT NULL,
+    transfer_date DATE NOT NULL,
+    notes VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (from_account_id) REFERENCES financial_accounts(id) ON DELETE CASCADE,
+    FOREIGN KEY (to_account_id) REFERENCES financial_accounts(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS teacher_payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    teacher_id INT NOT NULL,
+    account_id INT NULL,
+    hours_taught DECIMAL(6,2) DEFAULT 0.00,
+    hourly_rate DECIMAL(10,2) DEFAULT 0.00,
+    total_amount DECIMAL(12,2) NOT NULL,
+    payment_date DATE NOT NULL,
+    notes VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (teacher_id) REFERENCES teachers(id) ON DELETE CASCADE,
+    FOREIGN KEY (account_id) REFERENCES financial_accounts(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

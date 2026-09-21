@@ -41,6 +41,13 @@ export default function Finance() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
+  // Accounts
+  const [accounts, setAccounts] = useState([]);
+  const [isNewAccountModalOpen, setIsNewAccountModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [accountForm, setAccountForm] = useState({ name: '', currency: 'DZD', is_default: false, balance: 0 });
+  const [transferForm, setTransferForm] = useState({ from_account_id: '', to_account_id: '', amount: 0, notes: '', transfer_date: new Date().toISOString().slice(0, 10) });
+
   // Multi-selection for vouchers
   const [selectedTxIds, setSelectedTxIds] = useState([]);
   const [isMultiPrintOpen, setIsMultiPrintOpen] = useState(false);
@@ -66,13 +73,13 @@ export default function Finance() {
     payment_date: new Date().toISOString().slice(0, 10),
     payment_method: 'CASH',
     covered_months: [new Date().toISOString().slice(0, 7)],
-    notes: 'سداد اشتراك شهري'
+    notes: 't("finance.petty_cash_desc_1")'
   });
 
   const [settleForm, setSettleForm] = useState({
     payment_amount: 0,
     payment_method: 'CASH',
-    notes: 'سداد دين المستحقات'
+    notes: 't("finance.petty_cash_desc_2")'
   });
 
   const [cashForm, setCashForm] = useState({
@@ -87,19 +94,22 @@ export default function Finance() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (activeTab !== 'ALL' && activeTab !== 'CASH') params.append('type', activeTab);
+      if (activeTab !== 'ALL' && activeTab !== 'CASH' && activeTab !== 'ACCOUNTS') params.append('type', activeTab);
       if (search) params.append('search', search);
       if (statusFilter) params.append('status', statusFilter);
+      params.append('_t', Date.now()); // cache buster
 
-      const [ledgerRes, kpisRes, cashRes] = await Promise.all([
+      const [ledgerRes, kpisRes, cashRes, accountsRes] = await Promise.all([
         api.get(`/finance/ledger?${params.toString()}`),
-        api.get('/finance/kpis'),
-        api.get('/finance/cash-transactions')
+        api.get(`/finance/kpis?${params.toString()}`),
+        api.get(`/finance/cash-transactions?${params.toString()}`),
+        api.get(`/finance/accounts?${params.toString()}`)
       ]);
 
       if (ledgerRes.success) setTransactions(ledgerRes.data);
       if (kpisRes.success) setKpis(kpisRes.data);
       if (cashRes.success) setCashTransactions(cashRes.data);
+      if (accountsRes.success) setAccounts(accountsRes.data);
     } catch (err) {
       console.error('[FINANCE] Error loading data:', err);
     } finally {
@@ -239,6 +249,47 @@ export default function Finance() {
     }
   };
 
+  const handleCreateAccount = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/finance/accounts', accountForm);
+      if (res.success) {
+        toast.success(res.message);
+        setIsNewAccountModalOpen(false);
+        fetchFinanceData();
+        setAccountForm({ name: '', currency: 'DZD', balance: 0, is_default: false });
+      }
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleTransfer = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await api.post('/finance/accounts/transfer', transferForm);
+      if (res.success) {
+        toast.success(res.message);
+        setIsTransferModalOpen(false);
+        fetchFinanceData();
+      }
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleSetDefaultAccount = async (account) => {
+    try {
+      const res = await api.put(`/finance/accounts/${account.id}`, { is_default: true });
+      if (res.success) {
+        toast.success('t("finance.toast_default_set")');
+        fetchFinanceData();
+      }
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -264,7 +315,10 @@ export default function Finance() {
           </button>
 
           <button
-            onClick={() => setIsNewCashModalOpen(true)}
+            onClick={() => {
+              setCashForm({ type: 'EXPENSE', amount: '', category: '', description: '', payment_method: 'CASH' });
+              setIsNewCashModalOpen(true);
+            }}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-800 rounded-2xl text-xs font-bold border border-slate-200 shadow-xs transition-colors"
           >
             <Coins className="w-4 h-4 text-amber-500" />
@@ -273,9 +327,16 @@ export default function Finance() {
 
           <button
             onClick={() => {
-              if (students.length > 0 && !tuitionForm.student_id) {
-                setTuitionForm(prev => ({ ...prev, student_id: students[0].id }));
-              }
+              setTuitionForm({
+                student_id: students.length > 0 ? students[0].id : '',
+                fee_type_id: '',
+                discount_type: 'NONE',
+                discount_value: 0,
+                amount_paid: 0,
+                payment_method: 'CASH',
+                notes: '',
+                payment_date: new Date().toISOString().split('T')[0]
+              });
               setIsNewTuitionModalOpen(true);
             }}
             className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-emerald-600/30 transition-all"
@@ -355,6 +416,14 @@ export default function Finance() {
             >
               {t('finance.tab_cash')}
             </button>
+            <button
+              onClick={() => setActiveTab('ACCOUNTS')}
+              className={`px-3.5 py-1.5 rounded-xl transition-all ${
+                activeTab === 'ACCOUNTS' ? 'bg-white text-emerald-800 shadow-xs font-black' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {t("finance.financial_accounts_tab")}
+            </button>
           </div>
 
           {/* Search & Status Filters */}
@@ -372,7 +441,7 @@ export default function Finance() {
               />
             </div>
 
-            {activeTab !== 'CASH' && (
+            {activeTab !== 'CASH' && activeTab !== 'ACCOUNTS' && (
               <select
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
@@ -388,8 +457,8 @@ export default function Finance() {
         </div>
       </div>
 
-      {/* Main Table: Either Consolidated Ledger OR Petty Cash */}
-      {activeTab !== 'CASH' ? (
+      {/* Main Table: Either Consolidated Ledger, Petty Cash, or Accounts */}
+      {activeTab !== 'CASH' && activeTab !== 'ACCOUNTS' ? (
         /* CONSOLIDATED STATEMENT FEED */
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
@@ -521,8 +590,8 @@ export default function Finance() {
             </table>
           </div>
         </div>
-      ) : (
-        /* PETTY CASH REGISTER (حركة النثريات والمصاريف التشغيلية) */
+      ) : activeTab === 'CASH' ? (
+        /* PETTY CASH REGISTER */
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-xs text-right rtl:text-right ltr:text-left">
@@ -565,6 +634,31 @@ export default function Finance() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      ) : (
+        /* FINANCIAL ACCOUNTS */
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden p-6 space-y-4">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-bold text-lg">إدارة {t("finance.financial_accounts_tab")}</h3>
+            <div className="flex gap-2">
+              <button onClick={() => { setTransferForm({ from_account_id: '', to_account_id: '', amount: 0, notes: '' }); setIsTransferModalOpen(true); }} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">{t("finance.transfer_balance")}</button>
+              <button onClick={() => { setAccountForm({ name: '', currency: 'DZD', balance: 0, is_default: false }); setIsNewAccountModalOpen(true); }} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold">{t("finance.add_account")}</button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {accounts.map(acc => (
+              <div key={acc.id} className="border border-slate-200 rounded-2xl p-4 bg-slate-50 relative">
+                {acc.is_default ? (
+                  <span className="absolute top-2 left-2 px-2 py-1 bg-emerald-100 text-emerald-800 text-[10px] rounded-lg font-bold">{t("finance.default")}</span>
+                ) : (
+                  <button onClick={() => handleSetDefaultAccount(acc)} className="absolute top-2 left-2 px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] rounded-lg font-bold">{t("finance.set_as_default")}</button>
+                )}
+                <h4 className="font-bold text-slate-900 mb-2">{acc.name}</h4>
+                <p className="text-2xl font-mono text-emerald-700">{formatCurrency(acc.balance, acc.currency)}</p>
+                <p className="text-xs text-slate-500 mt-2">{t("finance.currency")}: {acc.currency}</p>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -725,7 +819,7 @@ export default function Finance() {
       </Modal>
 
       {/* =========================================================================
-          MODAL: SETTLE STORE DEBT (سداد دين متجر)
+          MODAL: SETTLE STORE DEBT
           ========================================================================= */}
       <Modal
         isOpen={isSettleDebtModalOpen}
@@ -857,6 +951,104 @@ export default function Finance() {
             >
               {t('finance.modal_cash_submit')}
             </button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* =========================================================================
+          MODAL: NEW ACCOUNT
+          ========================================================================= */}
+      <Modal
+        isOpen={isNewAccountModalOpen}
+        onClose={() => setIsNewAccountModalOpen(false)}
+        title={t("finance.new_account_title")}
+      >
+        <form onSubmit={handleCreateAccount} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">{t("finance.account_name")}</label>
+            <input
+              type="text"
+              required
+              value={accountForm.name}
+              onChange={e => setAccountForm({ ...accountForm, name: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
+            />
+          </div>
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">{t("finance.initial_balance")}</label>
+            <input
+              type="number"
+              step="0.01"
+              required
+              value={accountForm.balance}
+              onChange={e => setAccountForm({ ...accountForm, balance: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono"
+            />
+          </div>
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">{t("finance.currency")}</label>
+            <input
+              type="text"
+              required
+              value={accountForm.currency}
+              onChange={e => setAccountForm({ ...accountForm, currency: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button type="button" onClick={() => setIsNewAccountModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">{t("common.cancel")}</button>
+            <button type="submit" className="px-5 py-2 bg-emerald-600 text-white rounded-xl font-bold">{t("common.save")}</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* =========================================================================
+          MODAL: TRANSFER
+          ========================================================================= */}
+      <Modal
+        isOpen={isTransferModalOpen}
+        onClose={() => setIsTransferModalOpen(false)}
+        title={t("finance.transfer_title")}
+      >
+        <form onSubmit={handleTransfer} className="space-y-4 text-xs">
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">{t("finance.from_account")}</label>
+            <select
+              required
+              value={transferForm.from_account_id}
+              onChange={e => setTransferForm({ ...transferForm, from_account_id: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
+            >
+              <option value="">{t("finance.select_account")}</option>
+              {accounts.filter(acc => acc.id.toString() !== transferForm.to_account_id).map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance})</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">{t("finance.to_account")}</label>
+            <select
+              required
+              value={transferForm.to_account_id}
+              onChange={e => setTransferForm({ ...transferForm, to_account_id: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
+            >
+              <option value="">{t("finance.select_account")}</option>
+              {accounts.filter(acc => acc.id.toString() !== transferForm.from_account_id).map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance})</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">{t("finance.amount")}</label>
+            <input
+              type="number"
+              step="0.01"
+              required
+              value={transferForm.amount}
+              onChange={e => setTransferForm({ ...transferForm, amount: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-mono"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+            <button type="button" onClick={() => setIsTransferModalOpen(false)} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-bold">{t("common.cancel")}</button>
+            <button type="submit" className="px-5 py-2 bg-blue-600 text-white rounded-xl font-bold">{t("finance.transfer_balance")}</button>
           </div>
         </form>
       </Modal>

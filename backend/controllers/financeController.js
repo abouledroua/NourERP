@@ -41,6 +41,7 @@ export async function createTuitionPayment(req, res) {
     payment_date,
     payment_method,
     covered_months,
+    account_id,
     notes
   } = req.body;
 
@@ -71,13 +72,13 @@ export async function createTuitionPayment(req, res) {
     const result = await query(`
       INSERT INTO payments (
         receipt_number, student_id, fee_type_id, amount_due, discount_type, discount_value,
-        amount_paid, remaining_debt, payment_date, payment_method, status, covered_months, cashier_id, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        amount_paid, remaining_debt, payment_date, payment_method, status, covered_months, account_id, cashier_id, notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       receipt_number, student_id, fee_type_id, amount_due, discount_type || 'NONE', discount_value || 0.00,
       amount_paid, remaining_debt, payment_date || new Date().toISOString().slice(0, 10),
       payment_method || 'CASH', status, covered_months ? JSON.stringify(covered_months) : null,
-      req.user?.id || null, notes || null
+      account_id || null, req.user?.id || null, notes || null
     ]);
 
     await logAudit(req.user?.id, req.deviceId, req.workstationName, 'CREATE', 'payments', result.insertId, { receipt_number, amount_paid, remaining_debt }, req.ip);
@@ -182,7 +183,7 @@ export async function listCashTransactions(req, res) {
 }
 
 export async function createCashTransaction(req, res) {
-  const { transaction_type, category, amount, description, payment_method, receipt_ref, transaction_date } = req.body;
+  const { transaction_type, category, amount, description, payment_method, receipt_ref, account_id, transaction_date } = req.body;
 
   if (!transaction_type || !category || !amount || !description) {
     return res.status(400).json({ success: false, message: 'بيانات العملية المالية غير مكتملة / Required fields missing' });
@@ -194,16 +195,99 @@ export async function createCashTransaction(req, res) {
     const voucher_number = `CSH-${year}-${(countRow.count + 1).toString().padStart(4, '0')}`;
 
     const result = await query(`
-      INSERT INTO cash_transactions (voucher_number, transaction_type, category, amount, description, payment_method, receipt_ref, performed_by, transaction_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO cash_transactions (voucher_number, transaction_type, category, amount, description, payment_method, receipt_ref, account_id, performed_by, transaction_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       voucher_number, transaction_type, category, amount, description,
-      payment_method || 'CASH', receipt_ref || null, req.user?.id || null,
+      payment_method || 'CASH', receipt_ref || null, account_id || null, req.user?.id || null,
       transaction_date || new Date().toISOString().slice(0, 10)
     ]);
 
     await logAudit(req.user?.id, req.deviceId, req.workstationName, 'CREATE', 'cash_transactions', result.insertId, { voucher_number, transaction_type, amount }, req.ip);
     res.status(201).json({ success: true, message: 'تم تقييد العملية في سجل الخزينة / Cash entry recorded', voucher_number });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function listAccounts(req, res) {
+  try {
+    const accounts = await query('SELECT * FROM financial_accounts ORDER BY id ASC');
+    res.json({ success: true, data: accounts });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function createAccount(req, res) {
+  const { name, currency, is_default, balance } = req.body;
+  if (!name) return res.status(400).json({ success: false, message: 'اسم الحساب مطلوب / Account name required' });
+  try {
+    if (is_default) {
+      await query('UPDATE financial_accounts SET is_default = FALSE');
+    }
+    const result = await query('INSERT INTO financial_accounts (name, currency, is_default, balance) VALUES (?, ?, ?, ?)', [name, currency || 'DZD', is_default || false, balance || 0]);
+    res.json({ success: true, message: 'Account created', data: { id: result.insertId, name } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function updateAccount(req, res) {
+  const { id } = req.params;
+  const { name, currency, is_default, balance } = req.body;
+  try {
+    if (is_default) {
+      await query('UPDATE financial_accounts SET is_default = FALSE');
+    }
+    
+    const cols = [];
+    const vals = [];
+    if (name !== undefined) { cols.push('name = ?'); vals.push(name); }
+    if (currency !== undefined) { cols.push('currency = ?'); vals.push(currency); }
+    if (is_default !== undefined) { cols.push('is_default = ?'); vals.push(is_default); }
+    if (balance !== undefined) { cols.push('balance = ?'); vals.push(balance); }
+    
+    if (cols.length > 0) {
+      vals.push(id);
+      await query(`UPDATE financial_accounts SET ${cols.join(', ')} WHERE id = ?`, vals);
+    }
+    res.json({ success: true, message: 'تم تحديث الحساب بنجاح / Account updated' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function deleteAccount(req, res) {
+  const { id } = req.params;
+  try {
+    await query('DELETE FROM financial_accounts WHERE id = ?', [id]);
+    res.json({ success: true, message: 'تم حذف الحساب بنجاح / Account deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function transferFunds(req, res) {
+  const { from_account_id, to_account_id, amount, notes, transfer_date } = req.body;
+  if (!from_account_id || !to_account_id || !amount || amount <= 0) {
+    return res.status(400).json({ success: false, message: 'بيانات التحويل غير صالحة / Invalid transfer details' });
+  }
+  try {
+    await executeTransaction(async (conn) => {
+      // Deduct from sender
+      const [fromRes] = await conn.query('UPDATE financial_accounts SET balance = balance - ? WHERE id = ? AND balance >= ?', [amount, from_account_id, amount]);
+      if (fromRes.affectedRows === 0) {
+        throw new Error('رصيد غير كافي أو حساب غير صالح / Insufficient funds or invalid account');
+      }
+      // Add to receiver
+      await conn.query('UPDATE financial_accounts SET balance = balance + ? WHERE id = ?', [amount, to_account_id]);
+      // Record transfer
+      await conn.query('INSERT INTO account_transfers (from_account_id, to_account_id, amount, notes, transfer_date) VALUES (?, ?, ?, ?, ?)', 
+        [from_account_id, to_account_id, amount, notes || null, transfer_date || new Date().toISOString().slice(0, 10)]
+      );
+    });
+    res.json({ success: true, message: 'تم التحويل بنجاح / Transfer successful' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

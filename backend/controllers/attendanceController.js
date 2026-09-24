@@ -1,21 +1,27 @@
-import { query, executeTransaction } from '../config/db.js';
+import { query, executeTransaction } from "../config/db.js";
 
 export async function getClassAttendanceRoster(req, res) {
   const { classId, date } = req.query;
 
   if (!classId || !date) {
-    return res.status(400).json({ success: false, message: 'معرف القسم والتاريخ مطلوبان / Class ID and Date required' });
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "معرف القسم والتاريخ مطلوبان / Class ID and Date required",
+      });
   }
 
   try {
-    const students = await query(`
+    const students = await query(
+      `
       SELECT 
         s.id AS student_id,
         s.matricule,
         s.first_name_ar,
         s.last_name_ar,
-        s.parent_name,
-        s.parent_phone,
+        COALESCE((SELECT sg.name FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), 'ولي أمر') AS parent_name,
+        COALESCE((SELECT sg.phone FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), '') AS parent_phone,
         IFNULL(a.id, NULL) AS attendance_id,
         IFNULL(a.status, 'PRESENT') AS status,
         a.arrival_time,
@@ -26,7 +32,9 @@ export async function getClassAttendanceRoster(req, res) {
       LEFT JOIN attendance a ON a.student_id = s.id AND a.date = ?
       WHERE s.current_class_id = ? AND s.status = 'ACTIVE'
       ORDER BY s.last_name_ar ASC, s.first_name_ar ASC
-    `, [date, classId]);
+    `,
+      [date, classId],
+    );
 
     res.json({ success: true, data: students });
   } catch (err) {
@@ -38,14 +46,20 @@ export async function saveAttendanceBatch(req, res) {
   const { classId, date, records } = req.body;
 
   if (!classId || !date || !Array.isArray(records)) {
-    return res.status(400).json({ success: false, message: 'بيانات الحضور غير صالحة / Invalid attendance data' });
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "بيانات الحضور غير صالحة / Invalid attendance data",
+      });
   }
 
   try {
     await executeTransaction(async (conn) => {
       for (const rec of records) {
         if (rec.student_id) {
-          await conn.query(`
+          await conn.query(
+            `
             INSERT INTO attendance (student_id, class_id, date, status, minutes_late, reason, parent_notified, recorded_by)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
@@ -54,21 +68,27 @@ export async function saveAttendanceBatch(req, res) {
               reason = VALUES(reason),
               parent_notified = VALUES(parent_notified),
               recorded_by = VALUES(recorded_by)
-          `, [
-            rec.student_id,
-            classId,
-            date,
-            rec.status || 'PRESENT',
-            rec.minutes_late || 0,
-            rec.reason || null,
-            rec.parent_notified ? 1 : 0,
-            req.user?.id || null
-          ]);
+          `,
+            [
+              rec.student_id,
+              classId,
+              date,
+              rec.status || "PRESENT",
+              rec.minutes_late || 0,
+              rec.reason || null,
+              rec.parent_notified ? 1 : 0,
+              req.user?.id || null,
+            ],
+          );
         }
       }
     });
 
-    res.json({ success: true, message: 'تم حفظ سجل الحضور والغياب بنجاح / Attendance recorded successfully' });
+    res.json({
+      success: true,
+      message:
+        "تم حفظ سجل الحضور والغياب بنجاح / Attendance recorded successfully",
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -79,8 +99,14 @@ export async function toggleParentNotified(req, res) {
   const { parent_notified } = req.body;
 
   try {
-    await query('UPDATE attendance SET parent_notified = ? WHERE id = ?', [parent_notified ? 1 : 0, id]);
-    res.json({ success: true, message: 'تم تحديث حالة إشعار الولي / Parent notification status updated' });
+    await query("UPDATE attendance SET parent_notified = ? WHERE id = ?", [
+      parent_notified ? 1 : 0,
+      id,
+    ]);
+    res.json({
+      success: true,
+      message: "تم تحديث حالة إشعار الولي / Parent notification status updated",
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

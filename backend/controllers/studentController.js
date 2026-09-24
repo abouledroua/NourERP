@@ -1,9 +1,118 @@
-import { query, executeTransaction } from '../config/db.js';
-import { logAudit } from '../middlewares/deviceGuard.js';
-import { exportToExcel } from '../services/excelService.js';
+import bcrypt from "bcryptjs";
+import { query, executeTransaction } from "../config/db.js";
+import { logAudit } from "../middlewares/deviceGuard.js";
+import { exportToExcel } from "../services/excelService.js";
+
+function normalizeGuardianNin(nin) {
+  if (!nin) return "";
+  return String(nin).replace(/\s+/g, "").replace(/[-_]/g, "");
+}
+
+function generateGuardianPassword(length = 12) {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+  let password = "";
+  for (let i = 0; i < length; i += 1) {
+    password += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return password;
+}
+
+function validateUniqueGuardianNins(parents = []) {
+  const seen = new Set();
+  for (const parent of parents) {
+    if (!parent) continue;
+    const nin = normalizeGuardianNin(parent.nin);
+    if (!nin) continue;
+    if (seen.has(nin)) {
+      throw new Error(`Two guardians cannot share the same NIN: ${nin}`);
+    }
+    seen.add(nin);
+  }
+  return true;
+}
+
+async function createOrUpdateGuardian(
+  studentId,
+  parentData,
+  isPrimary = false,
+) {
+  const relationship = parentData.relationship || "FATHER";
+  const name = parentData.name?.trim() || "ولي أمر";
+  const phone = parentData.phone?.trim() || null;
+  const email = parentData.email?.trim()?.toLowerCase() || null;
+  const job = parentData.job?.trim() || null;
+  const nin = normalizeGuardianNin(parentData.nin);
+
+  if (nin) {
+    const [existing] = await query(
+      `SELECT * FROM student_guardians WHERE nin = ? LIMIT 1`,
+      [nin],
+    );
+
+    if (existing) {
+      const generatedPassword =
+        parentData.generatedPassword || parentData.password || "";
+      const passwordHash = generatedPassword
+        ? await bcrypt.hash(generatedPassword, 10)
+        : existing.password_hash;
+
+      await query(
+        `UPDATE student_guardians
+         SET student_id = ?, relationship = ?, name = ?, phone = ?, email = ?, job = ?, password_hash = COALESCE(?, password_hash), is_primary = ?
+         WHERE id = ?`,
+        [
+          studentId,
+          relationship,
+          name,
+          phone,
+          email,
+          job,
+          passwordHash,
+          isPrimary ? 1 : 0,
+          existing.id,
+        ],
+      );
+
+      return existing.id;
+    }
+  }
+
+  const generatedPassword =
+    parentData.generatedPassword || parentData.password || "";
+  const passwordHash = generatedPassword
+    ? await bcrypt.hash(generatedPassword, 10)
+    : null;
+
+  const result = await query(
+    `INSERT INTO student_guardians (student_id, relationship, name, nin, phone, email, job, password_hash, is_primary)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      studentId,
+      relationship,
+      name,
+      nin || null,
+      phone,
+      email,
+      job,
+      passwordHash,
+      isPrimary ? 1 : 0,
+    ],
+  );
+
+  return result.insertId;
+}
 
 export async function listStudents(req, res) {
-  const { trackId, classId, status, search, debtStatus, limit = 100, offset = 0 } = req.query;
+  const {
+    trackId,
+    classId,
+    status,
+    search,
+    debtStatus,
+    limit = 100,
+    offset = 0,
+  } = req.query;
 
   try {
     let sql = `
@@ -14,6 +123,23 @@ export async function listStudents(req, res) {
         t.code AS track_code,
         t.name_ar AS track_name_ar,
         t.name_en AS track_name_en,
+        (
+          SELECT JSON_ARRAYAGG(
+            JSON_OBJECT(
+              'id', sg.id,
+              'student_id', sg.student_id,
+              'relationship', sg.relationship,
+              'name', sg.name,
+              'nin', sg.nin,
+              'phone', sg.phone,
+              'email', sg.email,
+              'job', sg.job,
+              'is_primary', sg.is_primary
+            )
+          )
+          FROM student_guardians sg
+          WHERE sg.student_id = s.id
+        ) AS guardians_json,
         (
           SELECT GROUP_CONCAT(DISTINCT cl.name ORDER BY cl.name SEPARATOR ', ')
           FROM student_enrollments se2
@@ -30,23 +156,24 @@ export async function listStudents(req, res) {
     const params = [];
 
     if (trackId) {
-      sql += ' AND s.academic_track_id = ?';
+      sql += " AND s.academic_track_id = ?";
       params.push(trackId);
     }
     if (classId) {
-      sql += ' AND (s.current_class_id = ? OR EXISTS (SELECT 1 FROM student_enrollments se WHERE se.student_id = s.id AND se.class_id = ?))';
+      sql +=
+        " AND (s.current_class_id = ? OR EXISTS (SELECT 1 FROM student_enrollments se WHERE se.student_id = s.id AND se.class_id = ?))";
       params.push(classId, classId);
     }
     if (status) {
-      sql += ' AND s.status = ?';
+      sql += " AND s.status = ?";
       params.push(status);
     }
-    if (debtStatus === 'DEBT' || debtStatus === 'HAS_DEBT') {
+    if (debtStatus === "DEBT" || debtStatus === "HAS_DEBT") {
       sql += ` AND (
         IFNULL((SELECT SUM(remaining_debt) FROM payments WHERE student_id = s.id), 0) +
         IFNULL((SELECT SUM(remaining_debt) FROM product_sales WHERE student_id = s.id), 0)
       ) > 0`;
-    } else if (debtStatus === 'CLEARED' || debtStatus === 'NO_DEBT') {
+    } else if (debtStatus === "CLEARED" || debtStatus === "NO_DEBT") {
       sql += ` AND (
         IFNULL((SELECT SUM(remaining_debt) FROM payments WHERE student_id = s.id), 0) +
         IFNULL((SELECT SUM(remaining_debt) FROM product_sales WHERE student_id = s.id), 0)
@@ -61,19 +188,17 @@ export async function listStudents(req, res) {
         OR s.last_name_en LIKE ? 
         OR s.phone LIKE ?
         OR s.email LIKE ?
-        OR s.parent_name LIKE ? 
-        OR s.parent_phone LIKE ?
         OR EXISTS (
           SELECT 1 FROM student_guardians sg 
           WHERE sg.student_id = s.id 
-          AND (sg.name LIKE ? OR sg.phone LIKE ?)
+          AND (sg.name LIKE ? OR sg.phone LIKE ? OR sg.nin LIKE ?)
         )
       )`;
       const term = `%${search}%`;
-      params.push(term, term, term, term, term, term, term, term, term, term, term);
+      params.push(term, term, term, term, term, term, term, term, term, term);
     }
 
-    sql += ' ORDER BY s.created_at DESC LIMIT ? OFFSET ?';
+    sql += " ORDER BY s.created_at DESC LIMIT ? OFFSET ?";
     params.push(parseInt(limit, 10), parseInt(offset, 10));
 
     const students = await query(sql, params);
@@ -88,7 +213,8 @@ export async function getStudentDossier(req, res) {
 
   try {
     // 1. Basic Student Info
-    const students = await query(`
+    const students = await query(
+      `
       SELECT 
         s.*,
         c.name AS class_name,
@@ -100,34 +226,34 @@ export async function getStudentDossier(req, res) {
       LEFT JOIN classes c ON s.current_class_id = c.id
       JOIN academic_tracks t ON s.academic_track_id = t.id
       WHERE s.id = ?
-    `, [id]);
+    `,
+      [id],
+    );
 
     if (students.length === 0) {
-      return res.status(404).json({ success: false, message: 'التلميذ غير موجود / Student not found' });
+      return res.status(404).json({
+        success: false,
+        message: "التلميذ غير موجود / Student not found",
+      });
     }
     const student = students[0];
 
     // 1.1 Guardians (Multiple Parents & Emergency Contacts)
-    const guardiansRaw = await query(`
-      SELECT id, student_id, relationship, name, phone, email, job, is_primary
+    const guardiansRaw = await query(
+      `
+      SELECT id, student_id, relationship, name, nin, phone, email, job, is_primary
       FROM student_guardians
       WHERE student_id = ?
       ORDER BY is_primary DESC, id ASC
-    `, [id]);
+    `,
+      [id],
+    );
 
-    const guardians = guardiansRaw.length > 0 ? guardiansRaw : (student.parent_name ? [{
-      id: 'legacy',
-      student_id: student.id,
-      relationship: 'FATHER',
-      name: student.parent_name,
-      phone: student.parent_phone,
-      email: student.parent_email,
-      job: student.parent_job,
-      is_primary: 1
-    }] : []);
+    const guardians = guardiansRaw.length > 0 ? guardiansRaw : [];
 
     // 2. Assigned Classes / Cohorts (Multi-class enrollment)
-    const assignedClasses = await query(`
+    const assignedClasses = await query(
+      `
       SELECT 
         c.id,
         c.name,
@@ -155,10 +281,13 @@ export async function getStudentDossier(req, res) {
       LEFT JOIN student_enrollments se ON se.class_id = c.id AND se.student_id = ?
       WHERE se.student_id = ? OR c.id = ?
       ORDER BY c.grade_level ASC, c.name ASC
-    `, [id, id, student.current_class_id || 0]);
+    `,
+      [id, id, student.current_class_id || 0],
+    );
 
     // 3. Grades & Terms
-    const grades = await query(`
+    const grades = await query(
+      `
       SELECT 
         g.*,
         sub.name_ar AS subject_name_ar,
@@ -170,10 +299,13 @@ export async function getStudentDossier(req, res) {
       JOIN academic_terms term ON g.academic_term_id = term.id
       WHERE g.student_id = ?
       ORDER BY term.term_number ASC, sub.name_ar ASC
-    `, [id]);
+    `,
+      [id],
+    );
 
     // 4. Attendance Records Summary
-    const [attendanceSummary] = await query(`
+    const [attendanceSummary] = await query(
+      `
       SELECT 
         COUNT(id) AS total_sessions,
         SUM(CASE WHEN status = 'PRESENT' THEN 1 ELSE 0 END) AS present_count,
@@ -181,32 +313,43 @@ export async function getStudentDossier(req, res) {
         SUM(CASE WHEN status = 'LATE' THEN 1 ELSE 0 END) AS late_count
       FROM attendance
       WHERE student_id = ?
-    `, [id]);
+    `,
+      [id],
+    );
 
     // 5. Financial Statement (Tuition + Store)
-    const tuitionPayments = await query(`
+    const tuitionPayments = await query(
+      `
       SELECT p.*, ft.name_ar AS fee_name_ar
       FROM payments p
       JOIN fee_types ft ON p.fee_type_id = ft.id
       WHERE p.student_id = ?
       ORDER BY p.payment_date DESC
-    `, [id]);
+    `,
+      [id],
+    );
 
-    const storePurchases = await query(`
+    const storePurchases = await query(
+      `
       SELECT ps.*
       FROM product_sales ps
       WHERE ps.student_id = ?
       ORDER BY ps.created_at DESC
-    `, [id]);
+    `,
+      [id],
+    );
 
     // 6. Preschool Milestones (if preschool)
-    const milestones = await query(`
+    const milestones = await query(
+      `
       SELECT pm.*, term.name AS term_name
       FROM preschool_milestones pm
       JOIN academic_terms term ON pm.academic_term_id = term.id
       WHERE pm.student_id = ?
       ORDER BY term.term_number DESC
-    `, [id]);
+    `,
+      [id],
+    );
 
     res.json({
       success: true,
@@ -218,10 +361,10 @@ export async function getStudentDossier(req, res) {
         attendance: attendanceSummary,
         financials: {
           tuitionPayments,
-          storePurchases
+          storePurchases,
         },
-        milestones
-      }
+        milestones,
+      },
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -251,24 +394,31 @@ export async function createStudent(req, res) {
     address,
     maladies,
     medical_notes,
-    photo_url
+    photo_url,
   } = req.body;
 
   if (!first_name_ar || !last_name_ar || !birth_date || !academic_track_id) {
-    return res.status(400).json({ success: false, message: 'يرجى ملء جميع الحقول الإلزامية للتلميذ / Required fields missing' });
+    return res.status(400).json({
+      success: false,
+      message:
+        "يرجى ملء جميع الحقول الإلزامية للتلميذ / Required fields missing",
+    });
   }
 
   try {
     // Check for potential duplicate student (same name and birth date)
-    const existing = await query(`
+    const existing = await query(
+      `
       SELECT id, matricule FROM students 
       WHERE first_name_ar = ? AND last_name_ar = ? AND birth_date = ?
-    `, [first_name_ar.trim(), last_name_ar.trim(), birth_date]);
+    `,
+      [first_name_ar.trim(), last_name_ar.trim(), birth_date],
+    );
 
     if (existing.length > 0) {
       return res.status(409).json({
         success: false,
-        message: `يوجد تلميذ مسجل مسبقاً بنفس الاسم وتاريخ الميلاد (رقم القيد: ${existing[0].matricule})`
+        message: `يوجد تلميذ مسجل مسبقاً بنفس الاسم وتاريخ الميلاد (رقم القيد: ${existing[0].matricule})`,
       });
     }
 
@@ -276,107 +426,185 @@ export async function createStudent(req, res) {
 
     // If multiple parents are sent, synchronize the primary one to the main record
     if (Array.isArray(parents) && parents.length > 0) {
-      const validParents = parents.filter(p => p && (p.name?.trim() || p.phone?.trim()));
+      const validParents = parents.filter(
+        (p) => p && (p.name?.trim() || p.phone?.trim() || p.nin?.trim()),
+      );
       if (validParents.length > 0) {
-        const primaryParent = validParents.find(p => p.is_primary) || validParents[0];
+        const primaryParent =
+          validParents.find((p) => p.is_primary) || validParents[0];
         parent_name = primaryParent.name?.trim() || parent_name || null;
         parent_phone = primaryParent.phone?.trim() || parent_phone || null;
-        parent_email = primaryParent.email?.trim()?.toLowerCase() || parent_email || null;
+        parent_email =
+          primaryParent.email?.trim()?.toLowerCase() || parent_email || null;
         parent_job = primaryParent.job?.trim() || parent_job || null;
       }
     }
-    
+
     // Get Track Code
-    let trackShort = 'GEN';
+    let trackShort = "GEN";
     if (academic_track_id) {
-      const [track] = await query('SELECT code FROM academic_tracks WHERE id = ?', [academic_track_id]);
+      const [track] = await query(
+        "SELECT code FROM academic_tracks WHERE id = ?",
+        [academic_track_id],
+      );
       if (track) {
         const trackShortNames = {
-          'PRE_SCHOOL': 'PRE',
-          'K12_PRIMARY': 'PRI',
-          'K12_MIDDLE': 'MID',
-          'K12_HIGH': 'HIG',
-          'ACADEMIC_TUTORING': 'TUT'
+          PRE_SCHOOL: "PRE",
+          K12_PRIMARY: "PRI",
+          K12_MIDDLE: "MID",
+          K12_HIGH: "HIG",
+          ACADEMIC_TUTORING: "TUT",
         };
-        trackShort = trackShortNames[track.code] || track.code.substring(0, 3).toUpperCase();
+        trackShort =
+          trackShortNames[track.code] ||
+          track.code.substring(0, 3).toUpperCase();
       }
     }
 
     // Sequence specific to the group (Track)
-    const [maxRow] = await query('SELECT COUNT(*) AS total FROM students WHERE academic_track_id = ?', [academic_track_id]);
-    const nextNum = (maxRow.total + 1).toString().padStart(4, '0');
-    
+    const [maxRow] = await query(
+      "SELECT COUNT(*) AS total FROM students WHERE academic_track_id = ?",
+      [academic_track_id],
+    );
+    const nextNum = (maxRow.total + 1).toString().padStart(4, "0");
+
     const matricule = `${trackShort}-${year}-${nextNum}`;
 
-    const result = await query(`
+    const result = await query(
+      `
       INSERT INTO students (
         matricule, national_id, first_name_ar, last_name_ar, first_name_en, last_name_en,
         gender, birth_date, birth_place, blood_group, current_class_id, academic_track_id,
-        enrollment_date, status, parent_name, parent_phone, phone, email, parent_email, parent_job,
-        address, maladies, medical_notes, photo_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'ACTIVE', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [
-      matricule, 
-      national_id || null, 
-      first_name_ar, 
-      last_name_ar, 
-      first_name_en ? first_name_en.trim().toUpperCase() : null, 
-      last_name_en ? last_name_en.trim().toUpperCase() : null,
-      gender || 'MALE', birth_date, birth_place || null, blood_group || null, current_class_id || null, academic_track_id,
-      parent_name || null, parent_phone || null, phone || null, email ? email.trim().toLowerCase() : null, parent_email || null, parent_job || null, address || null, maladies || null, medical_notes || null,
-      photo_url || null
-    ]);
+        enrollment_date, status, phone, email, address, maladies, medical_notes, photo_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), 'ACTIVE', ?, ?, ?, ?, ?, ?)
+    `,
+      [
+        matricule,
+        national_id || null,
+        first_name_ar,
+        last_name_ar,
+        first_name_en ? first_name_en.trim().toUpperCase() : null,
+        last_name_en ? last_name_en.trim().toUpperCase() : null,
+        gender || "MALE",
+        birth_date,
+        birth_place || null,
+        blood_group || null,
+        current_class_id || null,
+        academic_track_id,
+        phone || null,
+        email ? email.trim().toLowerCase() : null,
+        address || null,
+        maladies || null,
+        medical_notes || null,
+        photo_url || null,
+      ],
+    );
 
     const newStudentId = result.insertId;
 
+    const preparedParents = Array.isArray(parents) ? parents : [];
+    const validParents = preparedParents.filter(
+      (p) => p && (p.name?.trim() || p.phone?.trim() || p.nin?.trim()),
+    );
+
+    validateUniqueGuardianNins(validParents);
+
     // Save multiple guardians in student_guardians
-    if (Array.isArray(parents) && parents.length > 0) {
-      const validParents = parents.filter(p => p && (p.name?.trim() || p.phone?.trim()));
-      for (const p of validParents) {
-        await query(`
-          INSERT INTO student_guardians (student_id, relationship, name, phone, email, job, is_primary)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `, [
+    if (validParents.length > 0) {
+      const generatedPasswordByNin = new Map();
+
+      for (const [index, p] of validParents.entries()) {
+        const normalizedNin = normalizeGuardianNin(p.nin);
+        let generatedPassword =
+          p.generatedPassword ||
+          p.password ||
+          (normalizedNin ? generateGuardianPassword() : "");
+
+        if (normalizedNin) {
+          generatedPasswordByNin.set(normalizedNin, generatedPassword);
+        }
+
+        if (normalizedNin && !p.generatedPassword && !p.password) {
+          p.generatedPassword = generatedPassword;
+        }
+
+        await createOrUpdateGuardian(
           newStudentId,
-          p.relationship || 'FATHER',
-          p.name?.trim() || 'ولي أمر',
-          p.phone?.trim() || null,
-          p.email?.trim()?.toLowerCase() || null,
-          p.job?.trim() || null,
-          p.is_primary ? 1 : 0
-        ]);
+          { ...p, generatedPassword },
+          Boolean(p.is_primary || index === 0),
+        );
       }
+
+      const generatedPasswords = [];
+      for (const parent of validParents) {
+        const normalizedNin = normalizeGuardianNin(parent.nin);
+        if (!normalizedNin) continue;
+        const generatedPassword =
+          parent.generatedPassword ||
+          parent.password ||
+          generatedPasswordByNin.get(normalizedNin) ||
+          generateGuardianPassword();
+        if (!parent.generatedPassword && !parent.password) {
+          parent.generatedPassword = generatedPassword;
+          generatedPasswordByNin.set(normalizedNin, generatedPassword);
+        }
+        generatedPasswords.push({
+          nin: normalizedNin,
+          password: generatedPassword,
+        });
+      }
+      res.locals.generatedPasswords = generatedPasswords;
     } else if (parent_name?.trim() || parent_phone?.trim()) {
-      await query(`
-        INSERT INTO student_guardians (student_id, relationship, name, phone, email, job, is_primary)
-        VALUES (?, 'FATHER', ?, ?, ?, ?, 1)
-      `, [
+      await createOrUpdateGuardian(
         newStudentId,
-        parent_name?.trim() || 'ولي أمر',
-        parent_phone?.trim() || null,
-        parent_email?.trim()?.toLowerCase() || null,
-        parent_job?.trim() || null
-      ]);
+        {
+          relationship: "FATHER",
+          name: parent_name,
+          phone: parent_phone,
+          email: parent_email,
+          job: parent_job,
+          nin: "",
+        },
+        true,
+      );
     }
 
     // If assigned to class, create enrollment record
     if (current_class_id) {
-      const [cls] = await query('SELECT academic_year_id FROM classes WHERE id = ?', [current_class_id]);
+      const [cls] = await query(
+        "SELECT academic_year_id FROM classes WHERE id = ?",
+        [current_class_id],
+      );
       if (cls) {
-        await query(`
+        await query(
+          `
           INSERT INTO student_enrollments (student_id, class_id, academic_year_id, enrollment_status)
           VALUES (?, ?, ?, 'ACTIVE')
           ON DUPLICATE KEY UPDATE class_id = VALUES(class_id)
-        `, [newStudentId, current_class_id, cls.academic_year_id]);
+        `,
+          [newStudentId, current_class_id, cls.academic_year_id],
+        );
       }
     }
 
-    await logAudit(req.user?.id, req.deviceId, req.workstationName, 'CREATE', 'students', newStudentId, { matricule, first_name_ar, last_name_ar }, req.ip);
+    await logAudit(
+      req.user?.id,
+      req.deviceId,
+      req.workstationName,
+      "CREATE",
+      "students",
+      newStudentId,
+      { matricule, first_name_ar, last_name_ar },
+      req.ip,
+    );
+
+    const generatedPasswords = res.locals.generatedPasswords || [];
 
     res.status(201).json({
       success: true,
-      message: 'تم تسجيل التلميذ بنجاح / Student enrolled successfully',
-      data: { id: newStudentId, matricule }
+      message: "تم تسجيل التلميذ بنجاح / Student enrolled successfully",
+      data: { id: newStudentId, matricule },
+      generatedPasswords,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -390,54 +618,86 @@ export async function updateStudent(req, res) {
   try {
     // Handle multiple guardians update
     if (fields.parents !== undefined && Array.isArray(fields.parents)) {
-      const validParents = fields.parents.filter(p => p && (p.name?.trim() || p.phone?.trim()));
-      await query('DELETE FROM student_guardians WHERE student_id = ?', [id]);
-      
-      if (validParents.length > 0) {
-        const primaryParent = validParents.find(p => p.is_primary) || validParents[0];
-        fields.parent_name = primaryParent.name?.trim() || null;
-        fields.parent_phone = primaryParent.phone?.trim() || null;
-        fields.parent_email = primaryParent.email?.trim()?.toLowerCase() || null;
-        fields.parent_job = primaryParent.job?.trim() || null;
+      const validParents = fields.parents.filter(
+        (p) => p && (p.name?.trim() || p.phone?.trim() || p.nin?.trim()),
+      );
+      validateUniqueGuardianNins(validParents);
+      await query("DELETE FROM student_guardians WHERE student_id = ?", [id]);
 
-        for (const p of validParents) {
-          await query(`
-            INSERT INTO student_guardians (student_id, relationship, name, phone, email, job, is_primary)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-          `, [
+      if (validParents.length > 0) {
+        for (const [index, p] of validParents.entries()) {
+          const normalizedNin = normalizeGuardianNin(p.nin);
+          const generatedPassword =
+            p.generatedPassword ||
+            p.password ||
+            (normalizedNin ? generateGuardianPassword() : "");
+
+          if (normalizedNin && !p.generatedPassword && !p.password) {
+            p.generatedPassword = generatedPassword;
+          }
+
+          await createOrUpdateGuardian(
             id,
-            p.relationship || 'FATHER',
-            p.name?.trim() || 'ولي أمر',
-            p.phone?.trim() || null,
-            p.email?.trim()?.toLowerCase() || null,
-            p.job?.trim() || null,
-            p.is_primary ? 1 : 0
-          ]);
+            { ...p, generatedPassword },
+            Boolean(p.is_primary || index === 0),
+          );
         }
-      } else {
-        fields.parent_name = null;
-        fields.parent_phone = null;
-        fields.parent_email = null;
-        fields.parent_job = null;
       }
     }
 
     const updateCols = [];
     const updateVals = [];
 
+    const generatedPasswords = [];
+    if (fields.parents && Array.isArray(fields.parents)) {
+      for (const parent of fields.parents) {
+        if (parent?.nin) {
+          const normalizedNin = normalizeGuardianNin(parent.nin);
+          const generatedPassword =
+            parent.generatedPassword ||
+            parent.password ||
+            generateGuardianPassword();
+          if (!parent.generatedPassword && !parent.password) {
+            parent.generatedPassword = generatedPassword;
+          }
+          generatedPasswords.push({
+            nin: normalizedNin,
+            password: generatedPassword,
+          });
+        }
+      }
+    }
+
     const allowed = [
-      'national_id', 'first_name_ar', 'last_name_ar', 'first_name_en', 'last_name_en',
-      'gender', 'birth_date', 'birth_place', 'blood_group', 'current_class_id',
-      'academic_track_id', 'status', 'parent_name', 'parent_phone', 'phone', 'email', 'parent_email',
-      'parent_job', 'address', 'maladies', 'medical_notes', 'photo_url'
+      "national_id",
+      "first_name_ar",
+      "last_name_ar",
+      "first_name_en",
+      "last_name_en",
+      "gender",
+      "birth_date",
+      "birth_place",
+      "blood_group",
+      "current_class_id",
+      "academic_track_id",
+      "status",
+      "phone",
+      "email",
+      "address",
+      "maladies",
+      "medical_notes",
+      "photo_url",
     ];
 
     for (const key of allowed) {
       if (fields[key] !== undefined) {
         let val = fields[key];
-        if ((key === 'first_name_en' || key === 'last_name_en') && typeof val === 'string') {
+        if (
+          (key === "first_name_en" || key === "last_name_en") &&
+          typeof val === "string"
+        ) {
           val = val.trim().toUpperCase();
-        } else if (key === 'email' && typeof val === 'string') {
+        } else if (key === "email" && typeof val === "string") {
           val = val.trim() ? val.trim().toLowerCase() : null;
         }
         updateCols.push(`\`${key}\` = ?`);
@@ -446,25 +706,50 @@ export async function updateStudent(req, res) {
     }
 
     if (updateCols.length === 0) {
-      return res.status(400).json({ success: false, message: 'لا توجد حقول للتعديل / No fields to update' });
+      return res.status(400).json({
+        success: false,
+        message: "لا توجد حقول للتعديل / No fields to update",
+      });
     }
 
     updateVals.push(id);
-    await query(`UPDATE students SET ${updateCols.join(', ')} WHERE id = ?`, updateVals);
+    await query(
+      `UPDATE students SET ${updateCols.join(", ")} WHERE id = ?`,
+      updateVals,
+    );
 
     if (fields.current_class_id) {
-      const [cls] = await query('SELECT academic_year_id FROM classes WHERE id = ?', [fields.current_class_id]);
+      const [cls] = await query(
+        "SELECT academic_year_id FROM classes WHERE id = ?",
+        [fields.current_class_id],
+      );
       if (cls) {
-        await query(`
+        await query(
+          `
           INSERT INTO student_enrollments (student_id, class_id, academic_year_id, enrollment_status)
           VALUES (?, ?, ?, 'ACTIVE')
           ON DUPLICATE KEY UPDATE class_id = VALUES(class_id)
-        `, [id, fields.current_class_id, cls.academic_year_id]);
+        `,
+          [id, fields.current_class_id, cls.academic_year_id],
+        );
       }
     }
 
-    await logAudit(req.user?.id, req.deviceId, req.workstationName, 'UPDATE', 'students', id, fields, req.ip);
-    res.json({ success: true, message: 'تم تحديث بيانات التلميذ بنجاح / Student updated successfully' });
+    await logAudit(
+      req.user?.id,
+      req.deviceId,
+      req.workstationName,
+      "UPDATE",
+      "students",
+      id,
+      fields,
+      req.ip,
+    );
+    res.json({
+      success: true,
+      message: "تم تحديث بيانات التلميذ بنجاح / Student updated successfully",
+      generatedPasswords,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -473,9 +758,21 @@ export async function updateStudent(req, res) {
 export async function deleteStudent(req, res) {
   const { id } = req.params;
   try {
-    await query('DELETE FROM students WHERE id = ?', [id]);
-    await logAudit(req.user?.id, req.deviceId, req.workstationName, 'DELETE', 'students', id, {}, req.ip);
-    res.json({ success: true, message: 'تم حذف ملف التلميذ بنجاح / Student record deleted' });
+    await query("DELETE FROM students WHERE id = ?", [id]);
+    await logAudit(
+      req.user?.id,
+      req.deviceId,
+      req.workstationName,
+      "DELETE",
+      "students",
+      id,
+      {},
+      req.ip,
+    );
+    res.json({
+      success: true,
+      message: "تم حذف ملف التلميذ بنجاح / Student record deleted",
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -494,8 +791,8 @@ export async function exportStudentsExcel(req, res) {
         t.name_ar AS 'المسار_الدراسي',
         s.phone AS 'هاتف_التلميذ',
         s.email AS 'بريد_التلميذ',
-        s.parent_name AS 'اسم_الولي',
-        s.parent_phone AS 'هاتف_الولي',
+        COALESCE((SELECT sg.name FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), '') AS 'اسم_الولي',
+        COALESCE((SELECT sg.phone FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), '') AS 'هاتف_الولي',
         s.status AS 'الحالة_الأكاديمية'
       FROM students s
       LEFT JOIN classes c ON s.current_class_id = c.id
@@ -503,9 +800,15 @@ export async function exportStudentsExcel(req, res) {
       ORDER BY s.matricule ASC
     `);
 
-    const excelBuffer = exportToExcel(students, 'Students');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', 'attachment; filename=students_directory.xlsx');
+    const excelBuffer = exportToExcel(students, "Students");
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader(
+      "Content-Disposition",
+      "attachment; filename=students_directory.xlsx",
+    );
     res.send(excelBuffer);
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -517,30 +820,63 @@ export async function assignStudentToClass(req, res) {
   const { class_id, roll_number, remarks } = req.body;
 
   if (!class_id) {
-    return res.status(400).json({ success: false, message: 'يرجى تحديد الفوج / Class ID required' });
+    return res.status(400).json({
+      success: false,
+      message: "يرجى تحديد الفوج / Class ID required",
+    });
   }
 
   try {
-    const [cls] = await query('SELECT academic_year_id, name FROM classes WHERE id = ?', [class_id]);
+    const [cls] = await query(
+      "SELECT academic_year_id, name FROM classes WHERE id = ?",
+      [class_id],
+    );
     if (!cls) {
-      return res.status(404).json({ success: false, message: 'الفوج غير موجود / Class not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "الفوج غير موجود / Class not found" });
     }
 
-    await query(`
+    await query(
+      `
       INSERT INTO student_enrollments (student_id, class_id, academic_year_id, roll_number, remarks, enrollment_status)
       VALUES (?, ?, ?, ?, ?, 'ACTIVE')
       ON DUPLICATE KEY UPDATE 
         enrollment_status = 'ACTIVE', 
         roll_number = COALESCE(VALUES(roll_number), roll_number),
         remarks = COALESCE(VALUES(remarks), remarks)
-    `, [id, class_id, cls.academic_year_id, roll_number || null, remarks || null]);
+    `,
+      [
+        id,
+        class_id,
+        cls.academic_year_id,
+        roll_number || null,
+        remarks || null,
+      ],
+    );
 
     // Update students.current_class_id if empty
-    await query(`UPDATE students SET current_class_id = COALESCE(current_class_id, ?) WHERE id = ?`, [class_id, id]);
+    await query(
+      `UPDATE students SET current_class_id = COALESCE(current_class_id, ?) WHERE id = ?`,
+      [class_id, id],
+    );
 
-    await logAudit(req.user?.id, req.deviceId, req.workstationName, 'UPDATE', 'students', id, { action: 'ASSIGN_CLASS', class_id, className: cls.name }, req.ip);
+    await logAudit(
+      req.user?.id,
+      req.deviceId,
+      req.workstationName,
+      "UPDATE",
+      "students",
+      id,
+      { action: "ASSIGN_CLASS", class_id, className: cls.name },
+      req.ip,
+    );
 
-    res.json({ success: true, message: 'تم إلحاق التلميذ بهذا القسم بنجاح / Student assigned to class successfully' });
+    res.json({
+      success: true,
+      message:
+        "تم إلحاق التلميذ بهذا القسم بنجاح / Student assigned to class successfully",
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -550,16 +886,38 @@ export async function removeStudentFromClass(req, res) {
   const { id, classId } = req.params;
 
   try {
-    await query('DELETE FROM student_enrollments WHERE student_id = ? AND class_id = ?', [id, classId]);
+    await query(
+      "DELETE FROM student_enrollments WHERE student_id = ? AND class_id = ?",
+      [id, classId],
+    );
 
     // If this was current_class_id, set to another assigned class or NULL
-    const remaining = await query('SELECT class_id FROM student_enrollments WHERE student_id = ? LIMIT 1', [id]);
+    const remaining = await query(
+      "SELECT class_id FROM student_enrollments WHERE student_id = ? LIMIT 1",
+      [id],
+    );
     const nextClassId = remaining.length > 0 ? remaining[0].class_id : null;
-    await query('UPDATE students SET current_class_id = ? WHERE id = ? AND current_class_id = ?', [nextClassId, id, classId]);
+    await query(
+      "UPDATE students SET current_class_id = ? WHERE id = ? AND current_class_id = ?",
+      [nextClassId, id, classId],
+    );
 
-    await logAudit(req.user?.id, req.deviceId, req.workstationName, 'UPDATE', 'students', id, { action: 'UNASSIGN_CLASS', classId }, req.ip);
+    await logAudit(
+      req.user?.id,
+      req.deviceId,
+      req.workstationName,
+      "UPDATE",
+      "students",
+      id,
+      { action: "UNASSIGN_CLASS", classId },
+      req.ip,
+    );
 
-    res.json({ success: true, message: 'تم إلغاء قيد التلميذ من هذا القسم بنجاح / Student removed from class' });
+    res.json({
+      success: true,
+      message:
+        "تم إلغاء قيد التلميذ من هذا القسم بنجاح / Student removed from class",
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

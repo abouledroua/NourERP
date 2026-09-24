@@ -221,12 +221,8 @@ CREATE TABLE IF NOT EXISTS students (
     enrollment_date DATE NOT NULL,
     status ENUM('ACTIVE', 'TRANSFERRED', 'GRADUATED', 'SUSPENDED') DEFAULT 'ACTIVE',
     photo_url VARCHAR(255) NULL,
-    parent_name VARCHAR(100) NULL,
-    parent_phone VARCHAR(30) NULL,
     phone VARCHAR(30) NULL,
     email VARCHAR(100) NULL,
-    parent_email VARCHAR(100) NULL,
-    parent_job VARCHAR(100) NULL,
     address TEXT NULL,
     maladies TEXT NULL,
     medical_notes TEXT NULL,
@@ -241,13 +237,16 @@ CREATE TABLE IF NOT EXISTS student_guardians (
     student_id INT NOT NULL,
     relationship VARCHAR(50) DEFAULT 'FATHER', -- 'FATHER', 'MOTHER', 'GUARDIAN', 'OTHER'
     name VARCHAR(100) NOT NULL,
+    nin VARCHAR(30) NULL,
     phone VARCHAR(30) NULL,
     email VARCHAR(100) NULL,
     job VARCHAR(100) NULL,
+    password_hash VARCHAR(255) NULL,
     is_primary BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    UNIQUE KEY uk_guardian_nin (nin),
     INDEX idx_guardian_student (student_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

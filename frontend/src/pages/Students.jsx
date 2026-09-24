@@ -67,6 +67,7 @@ export default function Students() {
       id: 1,
       relationship: 'FATHER',
       name: '',
+      nin: '',
       phone: '',
       email: '',
       job: '',
@@ -101,6 +102,68 @@ export default function Students() {
 
   const [formData, setFormData] = useState(initialFormState);
 
+  const resolveGuardianRelationship = (parents, index, matchedRelationship) => {
+    const desiredRelationship =
+      matchedRelationship === 'MOTHER' ? 'MOTHER' : 'FATHER';
+
+    const hasFather = parents.some((p, i) => i !== index && p.relationship === 'FATHER');
+    const hasMother = parents.some((p, i) => i !== index && p.relationship === 'MOTHER');
+
+    if (desiredRelationship === 'FATHER' && hasFather) {
+      return 'OTHER';
+    }
+    if (desiredRelationship === 'MOTHER' && hasMother) {
+      return 'OTHER';
+    }
+
+    return desiredRelationship;
+  };
+
+  const lookupParentByNin = async (index, ninValue) => {
+    const normalized = String(ninValue || '').replace(/\s+/g, '').replace(/[-_]/g, '');
+    if (!normalized || normalized.length < 4) return;
+
+    try {
+      const res = await api.get('/parent/lookup', { params: { nin: normalized } });
+      if (!res?.success || !res.found || !res.data) {
+        setFormData(prev => {
+          const updated = [...(prev.parents || [])];
+          const current = updated[index] || {};
+          updated[index] = {
+            ...current,
+            nin: normalized,
+            name: '',
+            phone: '',
+            email: '',
+            job: '',
+          };
+          return { ...prev, parents: updated };
+        });
+        toast.info('لا يوجد ولي أمر مسجل بهذا الرقم / No parent found for this NIN');
+        return;
+      }
+
+      setFormData(prev => {
+        const updated = [...(prev.parents || [])];
+        const current = updated[index] || {};
+        const matchedRelationship = res.data.relationship || 'FATHER';
+        updated[index] = {
+          ...current,
+          nin: normalized,
+          relationship: resolveGuardianRelationship(prev.parents || [], index, matchedRelationship),
+          name: current.name?.trim() || res.data.name || '',
+          phone: current.phone?.trim() || res.data.phone || '',
+          email: current.email?.trim() || res.data.email || '',
+          job: current.job?.trim() || res.data.job || '',
+        };
+        return { ...prev, parents: updated };
+      });
+    } catch (error) {
+      console.warn('Could not auto-load guardian by NIN', error);
+      toast.error(error.message || 'Unable to search parent by NIN');
+    }
+  };
+
   const handleAddParent = () => {
     const current = formData.parents || [];
     const defaultRel = current.some(p => p.relationship === 'FATHER') ? 'MOTHER' : 'GUARDIAN';
@@ -112,6 +175,7 @@ export default function Students() {
           id: Date.now(),
           relationship: defaultRel,
           name: '',
+          nin: '',
           phone: '',
           email: '',
           job: '',
@@ -132,6 +196,7 @@ export default function Students() {
         id: Date.now(),
         relationship: 'FATHER',
         name: '',
+        nin: '',
         phone: '',
         email: '',
         job: '',
@@ -207,6 +272,7 @@ export default function Students() {
           id: 1,
           relationship: 'FATHER',
           name: '',
+          nin: '',
           phone: '',
           email: '',
           job: '',
@@ -235,6 +301,7 @@ export default function Students() {
           id: g.id || idx + 1,
           relationship: g.relationship || 'FATHER',
           name: g.name || '',
+          nin: g.nin || '',
           phone: g.phone || '',
           email: g.email || '',
           job: g.job || '',
@@ -244,6 +311,7 @@ export default function Students() {
           id: 1,
           relationship: 'FATHER',
           name: st.parent_name || '',
+          nin: '',
           phone: st.parent_phone || '',
           email: st.parent_email || '',
           job: st.parent_job || '',
@@ -282,11 +350,26 @@ export default function Students() {
     const validParents = (formData.parents || []).map(p => ({
       relationship: p.relationship || 'FATHER',
       name: p.name ? p.name.trim() : '',
+      nin: p.nin ? p.nin.trim().replace(/\s+/g, '').replace(/[-_]/g, '') : '',
       phone: p.phone ? p.phone.trim() : '',
       email: p.email ? p.email.trim().toLowerCase() : '',
       job: p.job ? p.job.trim() : '',
       is_primary: Boolean(p.is_primary)
     }));
+
+    const seenNins = new Set();
+    const duplicateNin = validParents.find((p) => {
+      if (!p.nin) return false;
+      if (seenNins.has(p.nin)) return true;
+      seenNins.add(p.nin);
+      return false;
+    });
+
+    if (duplicateNin) {
+      toast.error('لا يمكن أن يتطابق رقم التعريف الوطني لاثنين من الأولياء / Two guardians cannot share the same NIN');
+      return;
+    }
+
     const primaryG = validParents.find(p => p.is_primary) || validParents[0] || {};
 
     const payload = {
@@ -313,6 +396,10 @@ export default function Students() {
       if (editingStudent) {
         const res = await api.put(`/students/${editingStudent.id}`, payload);
         if (res.success) {
+          if (Array.isArray(res.generatedPasswords) && res.generatedPasswords.length > 0) {
+            const passwordText = res.generatedPasswords.map((entry) => `${entry.nin}: ${entry.password}`).join(' | ');
+            toast.info(`Parent passwords generated: ${passwordText}`);
+          }
           toast.success(res.message || t('toast.student_updated', 'تم تحديث بيانات التلميذ بنجاح'));
           setIsModalOpen(false);
           setEditingStudent(null);
@@ -321,6 +408,10 @@ export default function Students() {
       } else {
         const res = await api.post('/students', payload);
         if (res.success) {
+          if (Array.isArray(res.generatedPasswords) && res.generatedPasswords.length > 0) {
+            const passwordText = res.generatedPasswords.map((entry) => `${entry.nin}: ${entry.password}`).join(' | ');
+            toast.info(`Parent passwords generated: ${passwordText}`);
+          }
           toast.success(res.message || t('toast.student_created', 'تم تسجيل التلميذ بنجاح'));
           setIsModalOpen(false);
           setFormData(initialFormState);
@@ -357,8 +448,68 @@ export default function Students() {
     }
   };
 
-  const handleExportExcel = () => {
-    window.open('/api/students/export/excel', '_blank');
+  const handleExportExcel = async () => {
+    try {
+      const blob = await api.get('/students/export/excel');
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'students_directory.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err.message || t('toast.export_failed', 'فشل تصدير ملف Excel'));
+    }
+  };
+
+  const getParentRows = (st) => {
+    const parents = [];
+
+    try {
+      let guardians = st.guardians_json;
+
+      if (typeof guardians === 'string') {
+        guardians = guardians ? JSON.parse(guardians) : [];
+      }
+
+      if (Array.isArray(guardians)) {
+        guardians.forEach((guardian) => {
+          if (guardian && (guardian.name || guardian.phone)) {
+            parents.push({
+              name: guardian.name || 'ولي أمر',
+              phone: guardian.phone || ''
+            });
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Failed to parse guardians_json for student', st.id, error);
+    }
+
+    if (parents.length === 0 && (st.parent_name || st.parent_phone)) {
+      parents.push({
+        name: st.parent_name || 'ولي أمر',
+        phone: st.parent_phone || ''
+      });
+    }
+
+    return parents;
+  };
+
+  const getGenderLabel = (gender) => {
+    const normalized = String(gender || '').toUpperCase();
+
+    if (normalized === 'MALE' || normalized === 'M') {
+      return t('students.gender_male', 'ذكر');
+    }
+
+    if (normalized === 'FEMALE' || normalized === 'F') {
+      return t('students.gender_female', 'أنثى');
+    }
+
+    return String(gender || '-');
   };
 
   return (
@@ -459,10 +610,10 @@ export default function Students() {
 
       {/* Students Data Table */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-xs text-right rtl:text-right ltr:text-left">
             <thead className="bg-slate-50/80 text-slate-500 font-bold border-b border-slate-100 uppercase tracking-wider">
-              <tr>
+              <tr className="[&>th]:text-right rtl:[&>th]:text-right ltr:[&>th]:text-left">
                 <th className="py-3.5 px-4">{t('students.col_matricule')}</th>
                 <th className="py-3.5 px-4">{t('students.col_name')}</th>
                 <th className="py-3.5 px-4">{t('students.col_gender')}</th>
@@ -489,115 +640,252 @@ export default function Students() {
                   </td>
                 </tr>
               ) : (
-                students.map((st) => (
-                  <tr key={st.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-slate-700">{st.matricule}</td>
-                    <td className="py-3 px-4">
-                      <button
-                        onClick={() => navigate(`/students/${st.id}`)}
-                        className="flex items-center gap-2.5 text-right rtl:text-right ltr:text-left group transition-all duration-150 focus:outline-none"
-                        title={t('students.view_details', 'عرض ملف التلميذ')}
-                      >
-                        {st.photo_url ? (
-                          <img
-                            src={st.photo_url}
-                            alt={`${st.first_name_ar} ${st.last_name_ar}`}
-                            className="w-8 h-8 rounded-full object-cover border border-emerald-200 shadow-2xs flex-shrink-0 group-hover:ring-2 group-hover:ring-emerald-500/50 transition-all"
-                            onError={(e) => { e.target.style.display = 'none'; }}
-                          />
+                students.map((st) => {
+                  const parentRows = getParentRows(st);
+
+                  return (
+                    <tr key={st.id} className="hover:bg-slate-50/80 transition-colors rtl:text-right ltr:text-left">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-700 text-right rtl:text-right ltr:text-left">{st.matricule}</td>
+                      <td className="py-3 px-4 text-right rtl:text-right ltr:text-left">
+                        <button
+                          onClick={() => navigate(`/students/${st.id}`)}
+                          className="flex items-center gap-2.5 text-right rtl:text-right ltr:text-left group transition-all duration-150 focus:outline-none"
+                          title={t('students.view_details', 'عرض ملف التلميذ')}
+                        >
+                          {st.photo_url ? (
+                            <img
+                              src={st.photo_url}
+                              alt={`${st.first_name_ar} ${st.last_name_ar}`}
+                              className="w-8 h-8 rounded-full object-cover border border-emerald-200 shadow-2xs flex-shrink-0 group-hover:ring-2 group-hover:ring-emerald-500/50 transition-all"
+                              onError={(e) => { e.target.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold transition-all group-hover:ring-2 group-hover:ring-emerald-500/50 ${st.gender === 'MALE' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'
+                              }`}>
+                              {st.first_name_ar ? st.first_name_ar.charAt(0) : 'ط'}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-extrabold text-slate-900 text-sm group-hover:text-emerald-600 transition-colors">
+                              {st.first_name_ar} {st.last_name_ar}
+                            </div>
+                            {st.first_name_en && (
+                              <div className="text-[10px] text-slate-400 group-hover:text-slate-500 transition-colors">{st.first_name_en} {st.last_name_en}</div>
+                            )}
+                          </div>
+                        </button>
+                      </td>
+                      <td className="py-3 px-4 text-right rtl:text-right ltr:text-left">
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${String(st.gender || '').toUpperCase() === 'MALE' ? 'bg-blue-50 text-blue-700' : 'bg-pink-50 text-pink-700'
+                          }`}>
+                          {getGenderLabel(st.gender)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right rtl:text-right ltr:text-left">
+                        {st.all_classes_names ? (
+                          <div className="flex flex-wrap gap-1 max-w-[220px]">
+                            {st.all_classes_names.split(',').map((cName, idx) => (
+                              <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60">
+                                {cName.trim()}
+                              </span>
+                            ))}
+                          </div>
                         ) : (
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold transition-all group-hover:ring-2 group-hover:ring-emerald-500/50 ${st.gender === 'MALE' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'
-                            }`}>
-                            {st.first_name_ar ? st.first_name_ar.charAt(0) : 'ط'}
+                          <span className="text-slate-400 text-xs font-medium">{st.class_name || '-'}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right rtl:text-right ltr:text-left">
+                        <span className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-slate-100 text-slate-700">
+                          {st.track_name_ar}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 align-top whitespace-normal max-w-[220px] text-right rtl:text-right ltr:text-left">
+                        {parentRows.length > 0 ? (
+                          <div className="space-y-1.5 break-words">
+                            {parentRows.map((parent, idx) => (
+                              <div key={`${st.id}-parent-${idx}`} className="leading-tight">
+                                <div className="font-medium text-slate-800 break-words">{parent.name || '-'}</div>
+                                {parent.phone && (
+                                  <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1 break-all">
+                                    <Phone className="w-2.5 h-2.5 text-slate-400 shrink-0" /> {parent.phone}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">-</span>
+                        )}
+                        {st.phone && (
+                          <div className="text-[10px] text-blue-600 font-mono font-bold flex items-center gap-1 mt-1.5 break-all" title={t('students.student_phone', 'هاتف التلميذ')}>
+                            <Phone className="w-2.5 h-2.5 text-blue-500 shrink-0" /> {st.phone}
                           </div>
                         )}
-                        <div>
-                          <div className="font-extrabold text-slate-900 text-sm group-hover:text-emerald-600 transition-colors">
-                            {st.first_name_ar} {st.last_name_ar}
-                          </div>
-                          {st.first_name_en && (
-                            <div className="text-[10px] text-slate-400 group-hover:text-slate-500 transition-colors">{st.first_name_en} {st.last_name_en}</div>
-                          )}
-                        </div>
-                      </button>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${st.gender === 'MALE' ? 'bg-blue-50 text-blue-700' : 'bg-pink-50 text-pink-700'
-                        }`}>
-                        {st.gender === 'MALE' ? t('students.gender_male', 'ذكر') : t('students.gender_female', 'أنثى')}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {st.all_classes_names ? (
-                        <div className="flex flex-wrap gap-1 max-w-[220px]">
-                          {st.all_classes_names.split(',').map((cName, idx) => (
-                            <span key={idx} className="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200/60">
-                              {cName.trim()}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 text-xs font-medium">{st.class_name || '-'}</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-slate-100 text-slate-700">
-                        {st.track_name_ar}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-slate-800">{st.parent_name || '-'}</div>
-                      {st.parent_phone && (
-                        <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
-                          <Phone className="w-2.5 h-2.5 text-slate-400" /> {st.parent_phone}
-                        </div>
-                      )}
-                      {st.phone && (
-                        <div className="text-[10px] text-blue-600 font-mono font-bold flex items-center gap-1 mt-0.5" title={t('students.student_phone', 'هاتف التلميذ')}>
-                          <Phone className="w-2.5 h-2.5 text-blue-500" /> {st.phone}
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      {Number(st.total_debt) > 0 ? (
-                        <span className="font-bold text-rose-600 font-mono">
-                          {formatCurrency(st.total_debt, settings.currency)}
+                      </td>
+                      <td className="py-3 px-4 text-right rtl:text-right ltr:text-left">
+                        {Number(st.total_debt) > 0 ? (
+                          <span className="font-bold text-rose-600 font-mono">
+                            {formatCurrency(st.total_debt, settings.currency)}
+                          </span>
+                        ) : (
+                          <span className="text-emerald-600 font-medium text-[11px]">{t('students.cleared', 'مستوفى 0.00')}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right rtl:text-right ltr:text-left">
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${st.status === 'ACTIVE'
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
+                          : 'bg-slate-100 text-slate-600'
+                          }`}>
+                          {st.status === 'ACTIVE' ? t('students.status_active') : (t(`students.status_${st.status?.toLowerCase()}`, st.status))}
                         </span>
-                      ) : (
-                        <span className="text-emerald-600 font-medium text-[11px]">{t('students.cleared', 'مستوفى 0.00')}</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${st.status === 'ACTIVE'
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
-                        : 'bg-slate-100 text-slate-600'
-                        }`}>
-                        {st.status === 'ACTIVE' ? t('students.status_active') : (t(`students.status_${st.status?.toLowerCase()}`, st.status))}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button
-                          onClick={() => handleOpenEditModal(st)}
-                          title={t('students.edit', 'تعديل البيانات')}
-                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteStudent(st)}
-                          title={t('students.delete', 'حذف الملف')}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => handleOpenEditModal(st)}
+                            title={t('students.edit', 'تعديل البيانات')}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteStudent(st)}
+                            title={t('students.delete', 'حذف الملف')}
+                            className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="md:hidden p-3 space-y-3">
+          {loading ? (
+            <div className="py-8 text-center text-slate-400">
+              <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              {t('common.loading')}
+            </div>
+          ) : students.length === 0 ? (
+            <div className="py-10 text-center text-slate-400">
+              {t('students.no_results', 'لا يوجد تلاميذ يطابقون شروط البحث')}
+            </div>
+          ) : (
+            students.map((st) => {
+              const parentRows = getParentRows(st);
+
+              return (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => navigate(`/students/${st.id}`)}
+                  className="w-full text-left rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {st.photo_url ? (
+                        <img
+                          src={st.photo_url}
+                          alt={`${st.first_name_ar} ${st.last_name_ar}`}
+                          className="w-9 h-9 rounded-full object-cover border border-emerald-200"
+                        />
+                      ) : (
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${st.gender === 'MALE' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
+                          {st.first_name_ar ? st.first_name_ar.charAt(0) : 'ط'}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="font-black text-slate-900 text-sm truncate">{st.first_name_ar} {st.last_name_ar}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">{st.matricule}</div>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold ${st.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                      {st.status === 'ACTIVE' ? t('students.status_active') : (t(`students.status_${st.status?.toLowerCase()}`, st.status))}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+                    <div>
+                      <div className="text-slate-400">{t('students.col_class')}</div>
+                      <div className="font-semibold text-slate-700">{st.class_name || st.all_classes_names || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400">{t('students.col_track')}</div>
+                      <div className="font-semibold text-slate-700">{st.track_name_ar || '-'}</div>
+                    </div>
+                    <div>
+                      <div className="text-slate-400">{t('students.col_gender')}</div>
+                      <div className="font-semibold text-slate-700">
+                        <span className={`inline-flex px-1.5 py-0.5 rounded-md text-[9px] font-bold ${String(st.gender || '').toUpperCase() === 'MALE' ? 'bg-blue-50 text-blue-700' : 'bg-pink-50 text-pink-700'}`}>
+                          {getGenderLabel(st.gender)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5 text-[11px]">
+                    <div className="text-slate-400">{t('students.col_parent')}</div>
+                    {parentRows.length > 0 ? (
+                      parentRows.map((parent, idx) => (
+                        <div key={`${st.id}-mobile-parent-${idx}`} className="rounded-lg bg-white px-2 py-1.5 border border-slate-200/80">
+                          <div className="font-semibold text-slate-800">{parent.name || '-'}</div>
+                          {parent.phone && (
+                            <div className="mt-0.5 text-slate-500 font-mono flex items-center gap-1 break-all">
+                              <Phone className="w-2.5 h-2.5 text-slate-400 shrink-0" /> {parent.phone}
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-slate-400">-</div>
+                    )}
+                    {st.phone && (
+                      <div className="text-blue-600 font-mono font-bold flex items-center gap-1 break-all">
+                        <Phone className="w-2.5 h-2.5 text-blue-500 shrink-0" /> {st.phone}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] text-slate-400">{t('students.col_debt')}</div>
+                      <div className="font-bold text-slate-800">
+                        {Number(st.total_debt) > 0 ? (
+                          <span className="text-rose-600 font-mono">{formatCurrency(st.total_debt, settings.currency)}</span>
+                        ) : (
+                          <span className="text-emerald-600">{t('students.cleared', 'مستوفى 0.00')}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleOpenEditModal(st); }}
+                        title={t('students.edit', 'تعديل البيانات')}
+                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-xl transition-colors"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteStudent(st); }}
+                        title={t('students.delete', 'حذف الملف')}
+                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -959,6 +1247,34 @@ export default function Students() {
                         <option value="GUARDIAN">{t('students.rel_guardian', 'الولي القانوني')}</option>
                         <option value="OTHER">{t('students.rel_other', 'آخر')}</option>
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                        {t('students.parent_nin', 'رقم التعريف الوطني')}
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={parent.nin || ''}
+                          onChange={e => handleParentChange(idx, 'nin', e.target.value)}
+                          onBlur={() => {
+                            if (parent.nin) {
+                              lookupParentByNin(idx, parent.nin);
+                            }
+                          }}
+                          placeholder={t('students.nin_placeholder', '18 رقماً أو رقم بطاقة التعريف الوطنية')}
+                          className="flex-1 bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 font-mono focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => lookupParentByNin(idx, parent.nin)}
+                          className="inline-flex items-center justify-center px-2.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl transition-colors"
+                          title={t('students.search_parent_by_nin', 'بحث عن ولي أمر بهذا الرقم')}
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     <div>

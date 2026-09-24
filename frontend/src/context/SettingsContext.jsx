@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../utils/api';
+import { useAuth } from './AuthContext';
 
 const SettingsContext = createContext();
 
 export function SettingsProvider({ children }) {
+  const { token } = useAuth();
   const [settings, setSettings] = useState({
     school_name_ar: 'مؤسسة ونظام النور الأكاديمي والتربوي',
     school_name_en: 'Al-Nour Academic & School Institute',
@@ -43,8 +45,14 @@ export function SettingsProvider({ children }) {
   };
 
   useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     fetchSettings();
-  }, []);
+  }, [token]);
 
   return (
     <SettingsContext.Provider value={{ settings, tracks, activeYear, activeTerm, loading, refreshSettings: fetchSettings }}>

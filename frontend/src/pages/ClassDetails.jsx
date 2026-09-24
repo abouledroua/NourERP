@@ -10,6 +10,50 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 
+const DAY_OPTIONS = [6, 0, 1, 2, 3, 4, 5];
+
+const createDefaultDaySchedule = () => Object.fromEntries(
+  DAY_OPTIONS.map((day) => [
+    day,
+    {
+      enabled: day !== 5,
+      start: '08:00',
+      end: '09:00'
+    }
+  ])
+);
+
+const parseScheduleInfo = (scheduleText, t) => {
+  const parsed = createDefaultDaySchedule();
+  if (!scheduleText) return parsed;
+
+  const segments = scheduleText.split('|').map((segment) => segment.trim()).filter(Boolean);
+  segments.forEach((segment) => {
+    const match = segment.match(/^(.*?)(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
+    if (!match) return;
+
+    const label = match[1].trim();
+    const start = match[2];
+    const end = match[3];
+
+    const dayIndex = DAY_OPTIONS.find((day) => {
+      const dayLabel = t(`timetable.days.${day}`);
+      return dayLabel === label || label.includes(dayLabel);
+    });
+
+    if (dayIndex !== undefined) {
+      parsed[dayIndex] = { enabled: true, start, end };
+    }
+  });
+
+  return parsed;
+};
+
+const serializeDaySchedule = (scheduleMap, t) => Object.entries(scheduleMap)
+  .filter(([, config]) => config?.enabled && config?.start && config?.end)
+  .map(([day, config]) => `${t(`timetable.days.${day}`)} ${config.start} - ${config.end}`)
+  .join(' | ');
+
 export default function ClassDetails() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -20,6 +64,7 @@ export default function ClassDetails() {
   const [classInfo, setClassInfo] = useState(null);
   const [roster, setRoster] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [daySchedule, setDaySchedule] = useState(createDefaultDaySchedule());
   const [loading, setLoading] = useState(true);
 
   // Edit Modal State
@@ -67,6 +112,7 @@ export default function ClassDetails() {
 
   const handleOpenEdit = () => {
     if (classInfo) {
+      setDaySchedule(parseScheduleInfo(classInfo.schedule_info || '', t));
       setEditForm({
         name: classInfo.name,
         academic_track_id: classInfo.academic_track_id,
@@ -75,7 +121,7 @@ export default function ClassDetails() {
         capacity: classInfo.capacity,
         classroom: classInfo.classroom || '',
         homeroom_teacher_id: classInfo.homeroom_teacher_id || '',
-        pricing_type: classInfo.pricing_type || 'MONTHLY',
+        pricing_type: classInfo.pricing_type || 'MONTH_BASED',
         pricing_value: classInfo.pricing_value || 0,
         schedule_info: classInfo.schedule_info || '',
         status: classInfo.status
@@ -87,7 +133,10 @@ export default function ClassDetails() {
   const handleUpdateClass = async (e) => {
     e.preventDefault();
     try {
-      const res = await api.put(`/classes/${id}`, editForm);
+      const res = await api.put(`/classes/${id}`, {
+        ...editForm,
+        schedule_info: serializeDaySchedule(daySchedule, t)
+      });
       if (res.success) {
         toast.success(res.message || t('toast.class_updated', 'Class updated successfully'));
         setIsEditModalOpen(false);
@@ -96,6 +145,37 @@ export default function ClassDetails() {
     } catch (err) {
       toast.error(err.message || t('toast.update_failed', 'Failed to update class'));
     }
+  };
+
+  const handlePricingTypeChange = (setter, nextType) => {
+    const normalizedType = nextType === 'MONTHLY' ? 'MONTH_BASED' : nextType === 'SESSION' ? 'SESSION_BASED' : nextType === 'HOURLY' ? 'HOUR_BASED' : nextType;
+    setter((prev) => ({
+      ...prev,
+      pricing_type: normalizedType,
+      pricing_value: {
+        MONTH_BASED: 5000,
+        SESSION_BASED: 1500,
+        HOUR_BASED: 500,
+      }[normalizedType] || 0,
+    }));
+  };
+
+  const adjustPricingValue = (setter, currentValue, delta) => {
+    const nextValue = Math.max(0, Number(currentValue || 0) + delta);
+    setter((prev) => ({
+      ...prev,
+      pricing_value: nextValue,
+    }));
+  };
+
+  const getAllowedStatusOptions = (status) => {
+    const options = {
+      PENDING: ['PENDING', 'ACTIVE'],
+      ACTIVE: ['ACTIVE', 'STOPPED'],
+      STOPPED: ['STOPPED', 'ACTIVE', 'ARCHIVED'],
+      ARCHIVED: ['ARCHIVED'],
+    };
+    return options[status] || [status];
   };
 
   if (loading) {
@@ -110,9 +190,9 @@ export default function ClassDetails() {
     return (
       <div className="text-center py-12">
         <AlertCircle className="w-12 h-12 text-rose-500 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-slate-800 mb-2">Class Not Found</h2>
+        <h2 className="text-xl font-bold text-slate-800 mb-2">{t('classes.not_found')}</h2>
         <button onClick={() => navigate('/classes')} className="text-emerald-600 hover:underline">
-          Return to Classes List
+          {t('classes.return_to_classes')}
         </button>
       </div>
     );
@@ -139,9 +219,10 @@ export default function ClassDetails() {
               <span className={`px-2.5 py-1 text-xs font-bold rounded-lg border ${
                 classInfo.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                 classInfo.status === 'STOPPED' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                classInfo.status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                 'bg-slate-100 text-slate-700 border-slate-200'
               }`}>
-                {classInfo.status}
+                {t(`classes.status_${classInfo.status?.toLowerCase()}`, classInfo.status)}
               </span>
               <button 
                 onClick={handleOpenEdit}
@@ -173,11 +254,11 @@ export default function ClassDetails() {
             <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <span className="block text-xs text-slate-500 mb-1">Grade Level</span>
+                  <span className="block text-xs text-slate-500 mb-1">{t('classes.grade_level_label')}</span>
                   <span className="font-bold text-slate-800">{classInfo.grade_level}</span>
                 </div>
                 <div>
-                  <span className="block text-xs text-slate-500 mb-1">Section</span>
+                  <span className="block text-xs text-slate-500 mb-1">{t('classes.section_label')}</span>
                   <span className="font-bold text-slate-800">{classInfo.section}</span>
                 </div>
               </div>
@@ -185,22 +266,22 @@ export default function ClassDetails() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="block text-xs text-slate-500 mb-1 flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> Classroom
+                    <MapPin className="w-3 h-3" /> {t('classes.classroom_label')}
                   </span>
-                  <span className="font-bold font-mono text-slate-800">{classInfo.classroom || 'N/A'}</span>
+                  <span className="font-bold font-mono text-slate-800">{classInfo.classroom || t('common.not_available', 'N/A')}</span>
                 </div>
                 <div>
-                  <span className="block text-xs text-slate-500 mb-1">Academic Year</span>
+                  <span className="block text-xs text-slate-500 mb-1">{t('classes.academic_year_label')}</span>
                   <span className="font-bold text-slate-800">{classInfo.academic_year_name}</span>
                 </div>
               </div>
 
               <div className="pt-4 border-t border-slate-100">
                 <span className="block text-xs text-slate-500 mb-1 flex items-center gap-1">
-                  <BookOpen className="w-3 h-3" /> Homeroom Teacher
+                  <BookOpen className="w-3 h-3" /> {t('classes.homeroom_teacher_label')}
                 </span>
                 <span className="font-bold text-slate-800">
-                  {classInfo.homeroom_teacher_name || <span className="text-slate-400 italic">None Assigned</span>}
+                  {classInfo.homeroom_teacher_name || <span className="text-slate-400 italic">{t('classes.no_homeroom_teacher')}</span>}
                 </span>
                 {classInfo.homeroom_teacher_phone && (
                   <span className="block text-xs font-mono text-slate-500 mt-0.5">{classInfo.homeroom_teacher_phone}</span>
@@ -213,12 +294,12 @@ export default function ClassDetails() {
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
             <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2">
               <Users className="w-4 h-4 text-emerald-600" />
-              Occupancy
+              {t('classes.occupancy_label')}
             </h3>
             
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-600">Students Enrolled:</span>
+                <span className="text-slate-600">{t('classes.students_enrolled')}:</span>
                 <span className="font-black text-slate-900">
                   {classInfo.enrolled_students_count} / {classInfo.capacity}
                 </span>
@@ -232,7 +313,7 @@ export default function ClassDetails() {
                   style={{ width: `${occupancy}%` }}
                 />
               </div>
-              <p className="text-xs text-slate-500 text-right mt-1">{occupancy}% Full</p>
+              <p className="text-xs text-slate-500 text-right mt-1">{occupancy}% {t('classes.full_text')}</p>
             </div>
           </div>
         </div>
@@ -259,7 +340,7 @@ export default function ClassDetails() {
                     <tr>
                       <th className="px-4 py-3">{t('students.col_matricule')}</th>
                       <th className="px-4 py-3">{t('students.col_name')}</th>
-                      <th className="px-4 py-3">Gender</th>
+                      <th className="px-4 py-3">{t('students.col_gender')}</th>
                       <th className="px-4 py-3">{t('students.parent_name')}</th>
                       <th className="px-4 py-3">{t('students.parent_phone')}</th>
                       <th className="px-4 py-3 text-center w-16"></th>
@@ -279,7 +360,7 @@ export default function ClassDetails() {
                           </Link>
                         </td>
                         <td className="px-4 py-3 text-xs text-slate-600">
-                          {student.gender === 'MALE' ? 'ذكر' : 'أنثى'}
+                          {student.gender === 'MALE' ? t('students.gender_male') : t('students.gender_female')}
                         </td>
                         <td className="px-4 py-3 text-slate-700">{student.parent_name || '-'}</td>
                         <td className="px-4 py-3 font-mono text-slate-600">{student.parent_phone || '-'}</td>
@@ -306,7 +387,7 @@ export default function ClassDetails() {
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
-        title={t('classes.modal_edit_title', 'Edit Class')}
+        title={t('classes.modal_edit_title')}
         maxWidth="max-w-xl"
       >
         {editForm && (
@@ -385,39 +466,111 @@ export default function ClassDetails() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">نوع التسعيرة / Pricing Type</label>
+                <label className="block font-bold text-slate-700 mb-1">{t('classes.pricing_type')}</label>
                 <select
                   required
                   value={editForm.pricing_type}
-                  onChange={e => setEditForm({ ...editForm, pricing_type: e.target.value })}
+                  onChange={e => handlePricingTypeChange(setEditForm, e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
-                  <option value="MONTHLY">شهري (Monthly)</option>
-                  <option value="SESSION">بالحصة (Per Session)</option>
-                  <option value="HOURLY">بالساعة (Hourly)</option>
+                  <option value="MONTH_BASED">{t('classes.pricing_monthly')}</option>
+                  <option value="SESSION_BASED">{t('classes.pricing_session')}</option>
+                  <option value="HOUR_BASED">{t('classes.pricing_hourly')}</option>
                 </select>
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">السعر / Price</label>
-                <input
-                  type="number"
-                  required
-                  value={editForm.pricing_value}
-                  onChange={e => setEditForm({ ...editForm, pricing_value: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                />
+                <label className="block font-bold text-slate-700 mb-1">{t('classes.pricing_value')}</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    required
+                    min="0"
+                    step="500"
+                    value={editForm.pricing_value}
+                    onChange={e => setEditForm({ ...editForm, pricing_value: Number(e.target.value) || 0 })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 pr-10 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex flex-col border-l border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => adjustPricingValue(setEditForm, editForm.pricing_value, 500)}
+                      className="w-8 h-1/2 border-b border-slate-200 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-tr-xl"
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => adjustPricingValue(setEditForm, editForm.pricing_value, -500)}
+                      className="w-8 h-1/2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-bold rounded-br-xl"
+                    >
+                      −
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">التوقيت / Schedule Info</label>
-              <input
-                type="text"
-                value={editForm.schedule_info}
-                onChange={e => setEditForm({ ...editForm, schedule_info: e.target.value })}
-                placeholder="مثال: السبت والثلاثاء 10:00 إلى 12:00"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
+              <label className="block font-bold text-slate-700 mb-1">{t('timetable.title')}</label>
+              <div className="space-y-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                {DAY_OPTIONS.map((day) => (
+                  <div key={day} className="grid grid-cols-[minmax(100px,140px)_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-xl bg-white px-2 py-2 border border-slate-200">
+                    <label className="flex items-center gap-2 text-[11px] font-bold text-slate-700 min-w-0">
+                      <input
+                        type="checkbox"
+                        checked={!!daySchedule[day]?.enabled}
+                        onChange={(e) => {
+                          setDaySchedule((prev) => ({
+                            ...prev,
+                            [day]: {
+                              ...prev[day],
+                              enabled: e.target.checked,
+                              start: e.target.checked && !prev[day]?.start ? '08:00' : prev[day]?.start || '08:00',
+                              end: e.target.checked && !prev[day]?.end ? '09:00' : prev[day]?.end || '09:00'
+                            }
+                          }));
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="truncate">{t(`timetable.days.${day}`)}</span>
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">{t('common.start_time')}</span>
+                      <input
+                        type="time"
+                        value={daySchedule[day]?.start || '08:00'}
+                        disabled={!daySchedule[day]?.enabled}
+                        onChange={(e) => {
+                          setDaySchedule((prev) => ({
+                            ...prev,
+                            [day]: { ...prev[day], start: e.target.value }
+                          }));
+                        }}
+                        className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </div>
+
+                    <span className="text-center text-[10px] font-bold text-slate-500">-</span>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">{t('common.end_time')}</span>
+                      <input
+                        type="time"
+                        value={daySchedule[day]?.end || '09:00'}
+                        disabled={!daySchedule[day]?.enabled}
+                        onChange={(e) => {
+                          setDaySchedule((prev) => ({
+                            ...prev,
+                            [day]: { ...prev[day], end: e.target.value }
+                          }));
+                        }}
+                        className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             <div>
@@ -427,10 +580,9 @@ export default function ClassDetails() {
                 onChange={e => setEditForm({ ...editForm, status: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               >
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="STOPPED">STOPPED</option>
-                <option value="PENDING">PENDING</option>
-                <option value="ARCHIVED">ARCHIVED</option>
+                {getAllowedStatusOptions(editForm.status).map((status) => (
+                  <option key={status} value={status}>{t(`classes.status_${status.toLowerCase()}`, status)}</option>
+                ))}
               </select>
             </div>
 

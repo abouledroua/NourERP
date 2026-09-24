@@ -75,6 +75,11 @@
     "general_track": "Educational Track"
   },
   "students": {
+    "birth_date_required": "Birth date is required",
+    "no_parents_registered": "No parents registered",
+    "section_parent_desc": "Parent Information",
+    "parent_nin": "Parent NIN",
+    "search_parent_by_nin": "Search by NIN",
     "title": "Students & Pupils Directory",
     "subtitle": "Manage comprehensive student dossiers, enrollments, and academic status",
     "add_btn": "Enroll New Student",
@@ -251,6 +256,7 @@
     "view_details": "View Student Profile"
   },
   "classes": {
+    "grade_level_placeholder": "e.g. 1st Grade, Year 1...",
     "title": "Groups Management",
     "subtitle": "Manage group capacities, homeroom teachers, and annual student rollover",
     "add_btn": "Create Group",
@@ -267,7 +273,6 @@
     "class_name": "Group Name",
     "class_name_placeholder": "E.g., Grade 1 Primary - Group A",
     "grade_level": "Grade Level",
-    "grade_level_placeholder": "e.g. 1AM / KG2 / 3AP",
     "academic_track": "Academic Track",
     "select_track": "Select academic track",
     "room_name": "Assigned Room",
@@ -321,6 +326,8 @@
     "delete_not_allowed": "Only groups in launch or empty groups can be deleted."
   },
   "teachers": {
+    "delete_btn": "Delete Teacher",
+    "payment_method": "Payment Method",
     "title": "Academic Faculty & Teaching Staff",
     "subtitle": "Faculty profiles, course assignments, and substitution schedules",
     "add_btn": "Add Faculty Member",
@@ -369,6 +376,7 @@
     "pay_salary": "Pay Salary"
   },
   "finance": {
+    "financial_account": "Financial Account",
     "title": "Consolidated Financial Ledger",
     "subtitle": "Unified chronological accounting ledger fusing tuition fees and school store sales",
     "kpi_total_paid": "Total Overall Paid",
@@ -735,7 +743,9 @@
     "select_sql_btn": "Choose SQL File to Restore",
     "backup_history": "Locally Saved Backup Dumps",
     "no_backups": "No previous backup files recorded.",
-    "tab_rooms": "Classrooms"
+    "tab_rooms": "Classrooms",
+    "manage_academic_track": "Manage Academic Track",
+    "manage_teachers": "Manage Teachers"
   },
   "device_modal": {
     "title": "Register & Name Workstation",
@@ -762,6 +772,9 @@
     "specs_note": "JPG, PNG, or WEBP (Max file size: 10 MB)."
   },
   "dialog": {
+    "delete_room_title": "Delete Room",
+    "delete_room_msg": "Are you sure you want to delete this room?",
+    "confirm_delete_room": "Confirm Delete",
     "confirm_title": "Confirm Action",
     "confirm_message": "Are you sure you want to proceed?",
     "confirm_delete_btn": "Yes, Confirm Delete",
@@ -794,6 +807,13 @@
     "transfer_class_msg": "Are you sure you want to transfer the student from group \"{from}\" to new group \"{to}\"?"
   },
   "toast": {
+    "room_created": "Room created successfully",
+    "room_create_failed": "Failed to create room",
+    "room_updated": "Room updated successfully",
+    "room_update_failed": "Failed to update room",
+    "room_deleted": "Room deleted successfully",
+    "room_delete_failed": "Failed to delete room",
+    "export_failed": "Export failed",
     "save_success": "Saved successfully",
     "delete_success": "Deleted successfully",
     "operation_success": "Operation successful",
@@ -877,6 +897,10 @@
     "teacher_pay_failed": "Failed to pay teacher"
   },
   "common": {
+    "cash": "Cash",
+    "bank_transfer": "Bank Transfer",
+    "cheque": "Cheque",
+    "pay": "Pay",
     "save": "Save",
     "cancel": "Cancel",
     "confirm": "Confirm",
@@ -992,6 +1016,12 @@
     "delete_success": "Announcement deleted successfully"
   },
   "parent_portal": {
+    "nin_required": "NIN is required",
+    "password_required": "Password is required",
+    "nin_label": "National Identity Number",
+    "nin_placeholder": "Enter NIN",
+    "password_label": "Password",
+    "password_placeholder": "Enter password",
     "title": "Parent Portal",
     "subtitle": "Monitor schooling, weekly schedules, and financial standing of your children",
     "login_title": "Parent Portal Login",
@@ -1037,5 +1067,16 @@
     "no_grades": "No grades recorded for this term yet",
     "no_announcements": "No announcements available right now",
     "logout": "Log Out"
+  },
+  "setup": {
+    "modal_title": "Create New Academic Year",
+    "modal_desc": "There is currently no active academic year. You must create one to start using the system.",
+    "year_name_label": "Academic Year Name *",
+    "year_name_placeholder": "e.g. 2026/2027",
+    "start_date_label": "Start Date *",
+    "end_date_label": "End Date *",
+    "save_continue_btn": "Save and Continue",
+    "error_creating_year": "Error creating academic year",
+    "saving": "Saving..."
   }
 }

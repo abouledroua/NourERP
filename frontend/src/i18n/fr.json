@@ -75,6 +75,11 @@
     "general_track": "Parcours éducatif"
   },
   "students": {
+    "birth_date_required": "La date de naissance est requise",
+    "no_parents_registered": "Aucun parent enregistré",
+    "section_parent_desc": "Informations sur le parent",
+    "parent_nin": "NIN du parent",
+    "search_parent_by_nin": "Rechercher par NIN",
     "title": "Répertoire des Élèves",
     "subtitle": "Gestion des dossiers scolaires et données personnelles",
     "add_btn": "Inscrire un Élève",
@@ -251,6 +256,7 @@
     "view_details": "Voir le profil de l'élève"
   },
   "classes": {
+    "grade_level_placeholder": "ex: 1ère Année...",
     "title": "Gestion des Groupes",
     "subtitle": "Structure académique, niveaux et répartition des cohortes",
     "add_btn": "Nouveau Groupe",
@@ -319,6 +325,8 @@
     "delete_not_allowed": "Ce groupe ne peut être supprimé que s'il est en lancement ou vide."
   },
   "teachers": {
+    "delete_btn": "Supprimer l'enseignant",
+    "payment_method": "Méthode de paiement",
     "title": "Corps Enseignant & Faculté",
     "subtitle": "Répertoire des professeurs, matières assignées et remplacements",
     "add_btn": "Ajouter un Professeur",
@@ -367,6 +375,7 @@
     "pay_salary": "Payer Salaire"
   },
   "finance": {
+    "financial_account": "Compte financier",
     "title": "Grand Livre Financier Consolidé",
     "subtitle": "Journal comptable unifié regroupant scolarité et ventes de la boutique",
     "kpi_total_paid": "Total Général Encaissé",
@@ -733,7 +742,9 @@
     "select_sql_btn": "Choisir le fichier SQL à restaurer",
     "backup_history": "Historique des sauvegardes locales",
     "no_backups": "Aucune sauvegarde précédente disponible.",
-    "tab_rooms": "Salles de cours"
+    "tab_rooms": "Salles de cours",
+    "manage_academic_track": "Gérer la filière académique",
+    "manage_teachers": "Gérer les enseignants"
   },
   "device_modal": {
     "title": "Identification du poste de travail",
@@ -760,6 +771,9 @@
     "specs_note": "JPG, PNG ou WEBP (taille max: 10 Mo)."
   },
   "dialog": {
+    "delete_room_title": "Supprimer la salle",
+    "delete_room_msg": "Êtes-vous sûr de vouloir supprimer cette salle ?",
+    "confirm_delete_room": "Confirmer la suppression",
     "confirm_title": "Confirmation de l'opération",
     "confirm_message": "Êtes-vous certain de vouloir continuer ?",
     "confirm_delete_btn": "Oui, confirmer la suppression",
@@ -792,6 +806,13 @@
     "transfer_class_msg": "Êtes-vous sûr de vouloir transférer l'élève du groupe \"{from}\" vers le nouveau groupe \"{to}\" ?"
   },
   "toast": {
+    "room_created": "Salle créée avec succès",
+    "room_create_failed": "Échec de la création de la salle",
+    "room_updated": "Salle mise à jour avec succès",
+    "room_update_failed": "Échec de la mise à jour de la salle",
+    "room_deleted": "Salle supprimée avec succès",
+    "room_delete_failed": "Échec de la suppression de la salle",
+    "export_failed": "Échec de l'exportation",
     "save_success": "Enregistrement effectué avec succès",
     "delete_success": "Suppression effectuée avec succès",
     "operation_success": "Opération réussie",
@@ -875,6 +896,10 @@
     "teacher_pay_failed": "Échec du paiement du professeur"
   },
   "common": {
+    "cash": "Espèces",
+    "bank_transfer": "Virement bancaire",
+    "cheque": "Chèque",
+    "pay": "Payer",
     "save": "Enregistrer",
     "cancel": "Annuler",
     "confirm": "Confirmer",
@@ -990,6 +1015,12 @@
     "delete_success": "Annonce supprimée avec succès"
   },
   "parent_portal": {
+    "nin_required": "Le NIN est requis",
+    "password_required": "Le mot de passe est requis",
+    "nin_label": "Numéro d'Identification National",
+    "nin_placeholder": "Saisir le NIN",
+    "password_label": "Mot de passe",
+    "password_placeholder": "Saisir le mot de passe",
     "title": "Espace Parents d'Élèves",
     "subtitle": "Suivez la scolarité, l'emploi du temps et la situation financière de vos enfants",
     "login_title": "Connexion Espace Parents",
@@ -1035,5 +1066,16 @@
     "no_grades": "Aucune note enregistrée pour le moment",
     "no_announcements": "Aucune annonce disponible actuellement",
     "logout": "Déconnexion"
+  },
+  "setup": {
+    "modal_title": "Créer une nouvelle année académique",
+    "modal_desc": "Il n'y a actuellement aucune année académique active. Vous devez en créer une pour commencer à utiliser le système.",
+    "year_name_label": "Nom de l'année académique *",
+    "year_name_placeholder": "ex: 2026/2027",
+    "start_date_label": "Date de début *",
+    "end_date_label": "Date de fin *",
+    "save_continue_btn": "Enregistrer et continuer",
+    "error_creating_year": "Erreur lors de la création de l'année académique",
+    "saving": "Enregistrement..."
   }
 }

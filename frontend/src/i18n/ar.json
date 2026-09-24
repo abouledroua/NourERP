@@ -75,6 +75,11 @@
     "general_track": "مسار تعليمي"
   },
   "students": {
+    "birth_date_required": "تاريخ الميلاد مطلوب",
+    "no_parents_registered": "لا يوجد أولياء أمور مسجلين",
+    "section_parent_desc": "معلومات ولي الأمر",
+    "parent_nin": "رقم التعريف الوطني للولي",
+    "search_parent_by_nin": "بحث عن ولي أمر بهذا الرقم",
     "title": "دليل وسجلات التلاميذ",
     "subtitle": "إدارة الملفات الأكاديمية والبيانات الشخصية للتلاميذ",
     "add_btn": "إضافة تلميذ جديد",
@@ -251,6 +256,7 @@
     "view_details": "عرض ملف التلميذ"
   },
   "classes": {
+    "grade_level_placeholder": "مثال: السنة الأولى...",
     "title": "إدارة الأفواج الدراسية",
     "subtitle": "الهيكلة والمستويات وتوزيع الأفواج الدراسية",
     "add_btn": "إنشاء فوج جديد",
@@ -267,7 +273,6 @@
     "class_name": "اسم الفوج",
     "class_name_placeholder": "مثال: الأولى متوسط - فوج 1، تمهيدي أ...",
     "grade_level": "المستوى الدراسي",
-    "grade_level_placeholder": "مثال: 1AM / KG2 / 3AP",
     "academic_track": "المسار الأكاديمي",
     "select_track": "اختر المسار الدراسي",
     "room_name": "القاعة الدراسية",
@@ -321,6 +326,8 @@
     "delete_not_allowed": "لا يمكن حذف الفوج إلا إذا كان في حالة الإنطلاق أو فارغاً."
   },
   "teachers": {
+    "delete_btn": "حذف الأستاذ",
+    "payment_method": "وسيلة الدفع",
     "title": "هيئة التدريس والمؤطرين الأكاديميين",
     "subtitle": "إدارة بيانات الأساتذة، التخصصات، وسجل استخلاف الحصص",
     "add_btn": "إضافة أستاذ جديد",
@@ -369,6 +376,7 @@
     "pay_salary": "دفع الراتب"
   },
   "finance": {
+    "financial_account": "الحساب المالي",
     "title": "الدفتر المالي الموحد ومستحقات المبيعات",
     "subtitle": "سجل محاسبي شامل يدمج الاشتراكات الدراسية ومبيعات المتجر المدرسي",
     "kpi_total_paid": "إجمالي المبالغ المقبوضة",
@@ -735,7 +743,9 @@
     "select_sql_btn": "اختيار ملف SQL للاستعادة",
     "backup_history": "سجل النسخ الاحتياطية المحفوظة محلياً",
     "no_backups": "لا توجد نسخ احتياطية سابقة.",
-    "tab_rooms": "القاعات الدراسية"
+    "tab_rooms": "القاعات الدراسية",
+    "manage_academic_track": "إدارة المسار الأكاديمي",
+    "manage_teachers": "إدارة المعلمين"
   },
   "device_modal": {
     "title": "تسمية وتوثيق محطة العمل",
@@ -762,6 +772,9 @@
     "specs_note": "JPG, PNG أو WEBP (الحد الأقصى: 10 ميغابايت)."
   },
   "dialog": {
+    "delete_room_title": "حذف القاعة",
+    "delete_room_msg": "هل أنت متأكد من حذف هذه القاعة؟",
+    "confirm_delete_room": "تأكيد الحذف",
     "confirm_title": "تأكيد العملية",
     "confirm_message": "هل أنت متأكد من الاستمرار؟",
     "confirm_delete_btn": "نعم، تأكيد الحذف",
@@ -794,6 +807,13 @@
     "transfer_class_msg": "هل أنت متأكد من تحويل التلميذ من فوج \"{from}\" إلى الفوج الجديد \"{to}\"؟"
   },
   "toast": {
+    "room_created": "تم إنشاء القاعة بنجاح",
+    "room_create_failed": "فشل في إنشاء القاعة",
+    "room_updated": "تم تحديث القاعة بنجاح",
+    "room_update_failed": "فشل في تحديث القاعة",
+    "room_deleted": "تم حذف القاعة بنجاح",
+    "room_delete_failed": "فشل في حذف القاعة",
+    "export_failed": "فشل التصدير",
     "save_success": "تم الحفظ بنجاح",
     "delete_success": "تم الحذف بنجاح",
     "operation_success": "تمت العملية بنجاح",
@@ -877,6 +897,10 @@
     "teacher_pay_failed": "خطأ في دفع الراتب"
   },
   "common": {
+    "cash": "نقداً",
+    "bank_transfer": "تحويل بنكي",
+    "cheque": "شيك",
+    "pay": "دفع",
     "save": "حفظ",
     "cancel": "إلغاء",
     "confirm": "تأكيد",
@@ -992,6 +1016,12 @@
     "delete_success": "تم حذف الإعلان بنجاح"
   },
   "parent_portal": {
+    "nin_required": "رقم التعريف الوطني مطلوب",
+    "password_required": "كلمة المرور مطلوبة",
+    "nin_label": "رقم التعريف الوطني (NIN)",
+    "nin_placeholder": "أدخل رقم التعريف",
+    "password_label": "كلمة المرور",
+    "password_placeholder": "أدخل كلمة المرور",
     "title": "فضاء أولياء التلاميذ",
     "subtitle": "متابعة مسار التمدرس، التخطيط الأسبوعي، والوضعية المالية لأبنائكم",
     "login_title": "تسجيل دخول الأولياء",
@@ -1037,5 +1067,16 @@
     "no_grades": "لم ترصد نقاط أو تقييمات لهذا الفصل بعد",
     "no_announcements": "لا توجد إعلانات جديدة موجهة لكم حالياً",
     "logout": "خروج من فضاء الأولياء"
+  },
+  "setup": {
+    "modal_title": "إنشاء سنة دراسية جديدة",
+    "modal_desc": "لا توجد سنة دراسية نشطة حالياً. يجب إنشاء سنة دراسية لبدء استخدام النظام.",
+    "year_name_label": "اسم السنة الدراسية *",
+    "year_name_placeholder": "مثال: 2026/2027",
+    "start_date_label": "تاريخ البداية *",
+    "end_date_label": "تاريخ النهاية *",
+    "save_continue_btn": "حفظ ومتابعة",
+    "error_creating_year": "خطأ في إنشاء السنة الدراسية",
+    "saving": "جاري الحفظ..."
   }
 }

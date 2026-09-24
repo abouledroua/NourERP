@@ -1095,7 +1095,12 @@ export default function Students() {
             </h4>
             <div className={`grid grid-cols-1 ${editingStudent ? 'sm:grid-cols-2' : 'sm:grid-cols-1'} gap-4`}>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.academic_track')} *</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-bold text-slate-700">{t('students.academic_track')} *</label>
+                  <button type="button" onClick={() => navigate('/settings')} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline">
+                    {t('settings.manage_academic_track', 'Manage Academic Track')}
+                  </button>
+                </div>
                 <select
                   required
                   value={formData.academic_track_id}

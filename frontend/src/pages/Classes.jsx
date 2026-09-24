@@ -599,7 +599,12 @@ export default function Classes() {
           </div>
 
           <div>
-            <label className="block font-bold text-slate-700 mb-1">{t('classes.homeroom_teacher')}</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block font-bold text-slate-700">{t('classes.homeroom_teacher')}</label>
+              <Link to="/teachers" className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline">
+                {t('settings.manage_teachers', 'Manage Teachers')}
+              </Link>
+            </div>
             <input
               type="text"
               list="teacher-search-options"

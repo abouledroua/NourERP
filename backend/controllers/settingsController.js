@@ -207,3 +207,26 @@ export async function restoreBackup(req, res) {
       });
   }
 }
+export async function createAcademicYear(req, res) {
+  const { name, start_date, end_date } = req.body;
+  if (!name || !start_date || !end_date) {
+    return res.status(400).json({ success: false, message: 'Missing fields' });
+  }
+  try {
+    const existing = await query('SELECT id FROM academic_years WHERE is_current = 1');
+    const is_current = existing.length === 0 ? 1 : 0;
+    const status = is_current ? 'ACTIVE' : 'PLANNED';
+    const result = await query(
+      'INSERT INTO academic_years (name, start_date, end_date, is_current, status) VALUES (?, ?, ?, ?, ?)',
+      [name, start_date, end_date, is_current, status]
+    );
+    await query(
+      `INSERT INTO academic_terms (academic_year_id, name, term_number, start_date, end_date, is_current) VALUES (?, 'الفصل الدراسي الأول / Trimestre 1', 1, ?, ?, TRUE), (?, 'الفصل الدراسي الثاني / Trimestre 2', 2, ?, ?, FALSE), (?, 'الفصل الدراسي الثالث / Trimestre 3', 3, ?, ?, FALSE)`,
+      [result.insertId, start_date, end_date, result.insertId, start_date, end_date, result.insertId, start_date, end_date]
+    );
+    res.json({ success: true, message: 'Academic year created' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+

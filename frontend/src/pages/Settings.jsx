@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { formatDateTime } from '../utils/formatters';
 import { 
   Settings as SettingsIcon, 
   School, 
@@ -393,7 +394,7 @@ export default function Settings() {
                   <td className="p-2.5 font-bold text-slate-900">{d.workstation_name}</td>
                   <td className="p-2.5 font-mono text-[10px] text-slate-500">{d.device_fingerprint}</td>
                   <td className="p-2.5 font-mono">{d.ip_address}</td>
-                  <td className="p-2.5 text-slate-500">{d.last_seen ? new Date(d.last_seen).toLocaleString('fr-FR') : '-'}</td>
+                  <td className="p-2.5 text-slate-500">{d.last_seen ? formatDateTime() : '-'}</td>
                   <td className="p-2.5">
                     <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold ${
                       d.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'

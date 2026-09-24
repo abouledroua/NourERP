@@ -17,7 +17,7 @@ import {
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
-import { formatCurrency, formatDate } from '../utils/formatters';
+import { formatCurrency, formatDateTime, formatDate } from '../utils/formatters';
 import StatCard from '../components/StatCard';
 
 export default function Dashboard() {
@@ -268,7 +268,7 @@ export default function Dashboard() {
             <tbody className="divide-y divide-slate-50">
               {recentAudits?.map((log) => (
                 <tr key={log.id} className="hover:bg-slate-50/80">
-                  <td className="py-2.5 font-mono text-slate-500">{new Date(log.created_at).toLocaleString('fr-FR')}</td>
+                  <td className="py-2.5 font-mono text-slate-500">{formatDateTime()}</td>
                   <td className="py-2.5 font-semibold text-slate-800">{log.user_name || t('audit.system_user')}</td>
                   <td className="py-2.5 text-slate-500 font-mono">{log.workstation_name}</td>
                   <td className="py-2.5">

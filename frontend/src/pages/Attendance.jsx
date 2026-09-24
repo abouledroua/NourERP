@@ -3,6 +3,7 @@ import { Clock, CheckCircle2, XCircle, AlertCircle, Save, Bell, Calendar } from 
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../context/UIFeedbackContext';
+import DateInput from '../components/DateInput';
 
 export default function Attendance() {
   const { t } = useLanguage();
@@ -136,8 +137,8 @@ export default function Attendance() {
 
         <div>
           <label className="block font-bold text-slate-500 mb-1">{t('attendance.select_date')}</label>
-          <input
-            type="date"
+          <DateInput
+            
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"

@@ -7,6 +7,8 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import Modal from '../components/Modal';
 import PhotoUpload from '../components/PhotoUpload';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
+import DateInput from '../components/DateInput';
+import TimeInput from '../components/TimeInput';
 
 export default function Teachers() {
   const { t, isRTL } = useLanguage();
@@ -667,8 +669,8 @@ export default function Teachers() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div>
                 <label className="block font-semibold text-slate-600 mb-0.5">{t('teachers.sub_date')}</label>
-                <input
-                  type="date"
+                <DateInput
+                  
                   required
                   value={newSub.substitution_date}
                   onChange={e => setNewSub({ ...newSub, substitution_date: e.target.value })}
@@ -737,15 +739,15 @@ export default function Teachers() {
               <div>
                 <label className="block font-semibold text-slate-600 mb-0.5">{t('timetable.time_from')} - {t('timetable.time_to')}</label>
                 <div className="flex items-center gap-1">
-                  <input
-                    type="time"
+                  <TimeInput
+                    
                     value={newSub.start_time}
                     onChange={e => setNewSub({ ...newSub, start_time: e.target.value })}
                     className="w-1/2 bg-white border border-slate-200 rounded-xl p-2"
                   />
                   <span>-</span>
-                  <input
-                    type="time"
+                  <TimeInput
+                    
                     value={newSub.end_time}
                     onChange={e => setNewSub({ ...newSub, end_time: e.target.value })}
                     className="w-1/2 bg-white border border-slate-200 rounded-xl p-2"

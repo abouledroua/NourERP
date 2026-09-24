@@ -19,6 +19,7 @@ import { toast, confirmDialog } from '../context/UIFeedbackContext';
 import api from '../utils/api';
 import Modal from '../components/Modal';
 import { formatDate } from '../utils/formatters';
+import DateInput from '../components/DateInput';
 
 export default function Announcements() {
   const { t } = useLanguage();
@@ -454,8 +455,8 @@ export default function Announcements() {
             <label className="block text-xs font-bold text-slate-700 mb-1">
               {t('announcements.modal_expires_label', 'تاريخ انتهاء الصلاحية (اختياري)')}
             </label>
-            <input
-              type="date"
+            <DateInput
+              
               value={formData.expires_at}
               onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:ring-2 focus:ring-emerald-500 focus:outline-none"

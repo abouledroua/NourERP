@@ -9,6 +9,7 @@ import {
   MapPin, CheckCircle, AlertCircle, FileText, Save, X, Printer
 } from 'lucide-react';
 import Modal from '../components/Modal';
+import TimeInput from '../components/TimeInput';
 
 const DAY_OPTIONS = [6, 0, 1, 2, 3, 4, 5];
 
@@ -537,8 +538,8 @@ export default function ClassDetails() {
 
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">{t('common.start_time')}</span>
-                      <input
-                        type="time"
+                      <TimeInput
+                        
                         value={daySchedule[day]?.start || '08:00'}
                         disabled={!daySchedule[day]?.enabled}
                         onChange={(e) => {
@@ -555,8 +556,8 @@ export default function ClassDetails() {
 
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">{t('common.end_time')}</span>
-                      <input
-                        type="time"
+                      <TimeInput
+                        
                         value={daySchedule[day]?.end || '09:00'}
                         disabled={!daySchedule[day]?.enabled}
                         onChange={(e) => {

@@ -156,7 +156,7 @@ export default function AuditLogs() {
               <p>{t('audit.col_action')}: <strong className="font-bold text-emerald-800">{selectedLog.action_type}</strong></p>
               <p>{t('audit.col_user')}: <strong>{selectedLog.user_full_name || selectedLog.username}</strong></p>
               <p>{t('audit.col_workstation')}: <strong className="font-mono">{selectedLog.workstation_name}</strong> ({selectedLog.ip_address})</p>
-              <p>{t('audit.col_time')}: <strong className="font-mono">{new Date(selectedLog.created_at).toLocaleString('fr-FR')}</strong></p>
+              <p>{t('audit.col_time')}: <strong className="font-mono">{formatDateTime()}</strong></p>
             </div>
 
             <div>

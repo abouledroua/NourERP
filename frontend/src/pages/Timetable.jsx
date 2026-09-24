@@ -5,6 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import Modal from '../components/Modal';
 import { formatTime } from '../utils/formatters';
+import TimeInput from '../components/TimeInput';
 
 const DAY_KEYS = [
   { id: 0, key: 'day_sunday' },
@@ -315,8 +316,8 @@ export default function Timetable() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('timetable.col_time_start')}</label>
-              <input
-                type="time"
+              <TimeInput
+                
                 required
                 value={slotForm.startTime}
                 onChange={e => setSlotForm({ ...slotForm, startTime: e.target.value })}
@@ -325,8 +326,8 @@ export default function Timetable() {
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('timetable.col_time_end')}</label>
-              <input
-                type="time"
+              <TimeInput
+                
                 required
                 value={slotForm.endTime}
                 onChange={e => setSlotForm({ ...slotForm, endTime: e.target.value })}

@@ -2,10 +2,11 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LanguageProvider } from './context/LanguageContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { SettingsProvider } from './context/SettingsContext';
+import { SettingsProvider, useSettings } from './context/SettingsContext';
 import { UIFeedbackProvider } from './context/UIFeedbackContext';
 
 import Layout from './components/Layout';
+import RequireAcademicYearModal from './components/RequireAcademicYearModal';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Students from './pages/Students';
@@ -26,9 +27,10 @@ import ParentLogin from './pages/ParentLogin';
 import ParentPortal from './pages/ParentPortal';
 
 function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  const { activeYear, loading: settingsLoading } = useSettings();
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -40,7 +42,12 @@ function ProtectedRoute({ children }) {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
+  return (
+    <>
+      {!settingsLoading && !activeYear && <RequireAcademicYearModal />}
+      {children}
+    </>
+  );
 }
 
 export default function App() {

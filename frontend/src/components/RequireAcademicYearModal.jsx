@@ -3,12 +3,35 @@ import api from '../utils/api';
 import { useSettings } from '../context/SettingsContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Calendar, Save } from 'lucide-react';
+import DateInput from '../components/DateInput';
 
 export default function RequireAcademicYearModal() {
   const { t } = useLanguage();
   const { refreshSettings } = useSettings();
   
-  const [formData, setFormData] = useState({ name: '', start_date: '', end_date: '' });
+  const [formData, setFormData] = useState(() => {
+    const today = new Date();
+    const currentYear = today.getFullYear();
+    const currentMonth = today.getMonth(); // 0 is January, 7 is August
+
+    let start_date = '';
+    let end_date = '';
+    let name = '';
+
+    if (currentMonth < 7) {
+      // Before August
+      start_date = `${currentYear - 1}-09-01`;
+      end_date = `${currentYear}-06-30`;
+      name = `${currentYear - 1}/${currentYear}`;
+    } else {
+      // August or after
+      start_date = `${currentYear}-09-01`;
+      end_date = `${currentYear + 1}-06-30`;
+      name = `${currentYear}/${currentYear + 1}`;
+    }
+
+    return { name, start_date, end_date };
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -63,8 +86,8 @@ export default function RequireAcademicYearModal() {
           </div>
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-1">{t('setup.start_date_label', 'Start Date *')}</label>
-            <input 
-              type="date" 
+            <DateInput 
+               
               required 
               value={formData.start_date} 
               onChange={e => setFormData({ ...formData, start_date: e.target.value })} 
@@ -73,8 +96,8 @@ export default function RequireAcademicYearModal() {
           </div>
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-1">{t('setup.end_date_label', 'End Date *')}</label>
-            <input 
-              type="date" 
+            <DateInput 
+               
               required 
               value={formData.end_date} 
               onChange={e => setFormData({ ...formData, end_date: e.target.value })} 

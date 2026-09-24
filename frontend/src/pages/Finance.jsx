@@ -23,6 +23,7 @@ import StatCard from '../components/StatCard';
 import Modal from '../components/Modal';
 import MultiReceiptModal from '../components/MultiReceiptModal';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
+import DateInput from '../components/DateInput';
 
 export default function Finance() {
   const { t, isRTL } = useLanguage();
@@ -715,8 +716,8 @@ export default function Finance() {
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('finance.modal_tuition_payment_date')}</label>
-              <input
-                type="date"
+              <DateInput
+                
                 required
                 value={tuitionForm.payment_date}
                 onChange={e => setTuitionForm({ ...tuitionForm, payment_date: e.target.value })}

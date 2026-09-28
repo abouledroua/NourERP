@@ -24,7 +24,7 @@ export const confirmDialog = (opts) => {
 };
 
 export function UIFeedbackProvider({ children }) {
-  const { t, isRTL } = useLanguage();
+  const { t, isRTL, lang } = useLanguage();
 
   // ==========================================
   // TOAST NOTIFICATIONS STATE
@@ -40,10 +40,15 @@ export function UIFeedbackProvider({ children }) {
     const id = ++toastIdRef.current;
     const duration = options.duration || 3000; // Auto hide after 3 seconds
 
+    let parsedMessage = message;
+    if (typeof message === 'object' && message !== null) {
+      parsedMessage = message[lang] || message.ar || message.en || JSON.stringify(message);
+    }
+
     const newToast = {
       id,
       type,
-      message,
+      message: parsedMessage,
       title: options.title || null,
       duration
     };

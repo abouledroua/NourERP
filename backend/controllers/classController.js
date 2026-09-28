@@ -145,8 +145,8 @@ export async function getClassRoster(req, res) {
         s.last_name_en,
         s.gender,
         s.birth_date,
-        COALESCE((SELECT sg.name FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), 'ولي أمر') AS parent_name,
-        COALESCE((SELECT sg.phone FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), '') AS parent_phone,
+        COALESCE((SELECT g.name FROM guardians g JOIN student_guardian_mapping sgm ON g.id = sgm.guardian_id WHERE sgm.student_id = s.id AND sgm.is_primary = 1 ORDER BY g.id LIMIT 1), 'ولي أمر') AS parent_name,
+        COALESCE((SELECT g.phone FROM guardians g JOIN student_guardian_mapping sgm ON g.id = sgm.guardian_id WHERE sgm.student_id = s.id AND sgm.is_primary = 1 ORDER BY g.id LIMIT 1), '') AS parent_phone,
         s.status
       FROM students s
       WHERE s.current_class_id = ?

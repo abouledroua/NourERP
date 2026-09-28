@@ -161,9 +161,11 @@ export default function Login() {
           </form>
 
           {/* Demo hint */}
-          <div className="mt-6 pt-4 border-t border-slate-800 text-center text-[11px] text-slate-500">
-            {t('login.demo_hint')} <span className="text-slate-300 font-mono font-bold">admin</span> / <span className="text-slate-300 font-mono font-bold">admin123</span>
-          </div>
+          {import.meta.env.DEV && (
+            <div className="mt-6 pt-4 border-t border-slate-800 text-center text-[11px] text-slate-500">
+              {t('login.demo_hint')} <span className="text-slate-300 font-mono font-bold">admin</span> / <span className="text-slate-300 font-mono font-bold">admin123</span>
+            </div>
+          )}
 
           {/* Direct Link to Parent Portal */}
           <div className="mt-4 pt-3 border-t border-slate-800/60 text-center">

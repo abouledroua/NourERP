@@ -29,4 +29,10 @@ router.get(
   parentLoginController.getParentAnnouncements,
 );
 
+router.put(
+  "/password",
+  authenticateToken,
+  parentLoginController.updateParentPassword
+);
+
 export default router;

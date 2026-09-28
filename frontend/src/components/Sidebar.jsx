@@ -4,6 +4,7 @@ import {
   LayoutDashboard, 
   GraduationCap, 
   Users, 
+  UserCheck,
   BookOpen, 
   CalendarDays, 
   Award, 
@@ -74,6 +75,7 @@ export default function Sidebar({ isOpen, onClose, isDesktopVisible = true, widt
       title: t('nav.section_academic'),
       items: [
         { to: '/students', icon: GraduationCap, label: t('nav.students') },
+        { to: '/guardians', icon: UserCheck, label: t('nav.guardians', 'إدارة الأولياء') },
         { to: '/classes', icon: Users, label: t('nav.classes') },
         { to: '/rooms', icon: DoorOpen, label: t('nav.rooms', 'Salles') },
         { to: '/teachers', icon: BookOpen, label: t('nav.teachers') },
@@ -104,7 +106,7 @@ export default function Sidebar({ isOpen, onClose, isDesktopVisible = true, widt
       {/* Brand Header */}
       <div className={`h-20 flex items-center justify-between border-b border-navy-800/80 bg-navy-950/40 w-full ${isCollapsed ? 'justify-center px-0' : 'px-6'}`}>
         <div className={`flex items-center overflow-hidden ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-white font-black text-xl flex-shrink-0">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-white font-black text-xl flex-shrink-0 animate-pulse-glow">
             ن
           </div>
           {!isCollapsed && (

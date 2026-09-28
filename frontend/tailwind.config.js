@@ -41,6 +41,35 @@ export default {
         '2xl': '1rem',
         '3xl': '1.5rem',
         '4xl': '2rem',
+      },
+      keyframes: {
+        modalEnter: {
+          '0%': { opacity: '0', transform: 'scale(0.95) translateY(10px)' },
+          '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
+        },
+        modalOverlay: {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+        slideSidebar: {
+          '0%': { transform: 'translateX(100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
+        slideSidebarLtr: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
+        pulseGlow: {
+          '0%, 100%': { opacity: 1, filter: 'brightness(1)' },
+          '50%': { opacity: 0.8, filter: 'brightness(1.2)' },
+        }
+      },
+      animation: {
+        'modal-enter': 'modalEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'modal-overlay': 'modalOverlay 0.3s ease-out forwards',
+        'sidebar-slide': 'slideSidebar 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'sidebar-slide-ltr': 'slideSidebarLtr 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       }
     },
   },

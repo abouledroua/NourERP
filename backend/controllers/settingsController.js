@@ -230,3 +230,90 @@ export async function createAcademicYear(req, res) {
   }
 }
 
+export async function createTrack(req, res) {
+  const { code, name_ar, name_en, name_fr, description } = req.body;
+  if (!code || !name_ar || !name_en || !name_fr) {
+    return res.status(400).json({ success: false, message: 'Missing required track fields / الحقول المطلوبة مفقودة' });
+  }
+  try {
+    const result = await query(
+      'INSERT INTO academic_tracks (code, name_ar, name_en, name_fr, description, is_active) VALUES (?, ?, ?, ?, ?, 1)',
+      [code, name_ar, name_en, name_fr, description || null]
+    );
+    await logAudit(
+      req.user?.id,
+      req.deviceId,
+      req.workstationName,
+      "CREATE",
+      "academic_tracks",
+      result.insertId,
+      { code, name_ar, name_en, name_fr },
+      req.ip
+    );
+    res.json({ success: true, message: 'Track created successfully / تم إنشاء المسار بنجاح', id: result.insertId });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+       return res.status(400).json({ success: false, message: 'Track code already exists / رمز المسار موجود مسبقاً' });
+    }
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function editTrack(req, res) {
+  const { id } = req.params;
+  const { code, name_ar, name_en, name_fr, description, is_active } = req.body;
+  
+  if (!code || !name_ar || !name_en || !name_fr) {
+    return res.status(400).json({ success: false, message: 'Missing required track fields / الحقول المطلوبة مفقودة' });
+  }
+
+  try {
+    await query(
+      'UPDATE academic_tracks SET code = ?, name_ar = ?, name_en = ?, name_fr = ?, description = ?, is_active = ? WHERE id = ?',
+      [code, name_ar, name_en, name_fr, description || null, is_active ? 1 : 0, id]
+    );
+    await logAudit(
+      req.user?.id,
+      req.deviceId,
+      req.workstationName,
+      "UPDATE",
+      "academic_tracks",
+      id,
+      { code, name_ar, name_en, name_fr, is_active },
+      req.ip
+    );
+    res.json({ success: true, message: 'Track updated successfully / تم تحديث المسار بنجاح' });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+       return res.status(400).json({ success: false, message: 'Track code already exists / رمز المسار موجود مسبقاً' });
+    }
+    res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function deleteTrack(req, res) {
+  const { id } = req.params;
+  try {
+    // Attempt to delete
+    await query('DELETE FROM academic_tracks WHERE id = ?', [id]);
+    await logAudit(
+      req.user?.id,
+      req.deviceId,
+      req.workstationName,
+      "DELETE",
+      "academic_tracks",
+      id,
+      null,
+      req.ip
+    );
+    res.json({ success: true, message: 'Track deleted successfully / تم حذف المسار بنجاح' });
+  } catch (err) {
+    if (err.code === 'ER_ROW_IS_REFERENCED_2' || err.code === 'ER_ROW_IS_REFERENCED') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Cannot delete track. It is currently assigned to one or more groups/students. / لا يمكن حذف المسار لأنه مرتبط بأفواج أو طلاب' 
+      });
+    }
+    res.status(500).json({ success: false, message: err.message });
+  }
+}

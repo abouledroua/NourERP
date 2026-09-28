@@ -144,64 +144,44 @@ export async function checkAndInitializeDefaults() {
       );
     }
 
-    // 6. Ensure 'student_guardians' table exists and backfill existing parent records
+    // 6. Ensure 'guardians' and mapping tables exist
     try {
       await query(`
-        CREATE TABLE IF NOT EXISTS student_guardians (
+        CREATE TABLE IF NOT EXISTS guardians (
           id INT AUTO_INCREMENT PRIMARY KEY,
-          student_id INT NOT NULL,
-          relationship VARCHAR(50) DEFAULT 'FATHER',
           name VARCHAR(100) NOT NULL,
           nin VARCHAR(30) NULL,
           phone VARCHAR(30) NULL,
           email VARCHAR(100) NULL,
           job VARCHAR(100) NULL,
           password_hash VARCHAR(255) NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_guardian_nin (nin)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+      `);
+
+      await query(`
+        CREATE TABLE IF NOT EXISTS student_guardian_mapping (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          student_id INT NOT NULL,
+          guardian_id INT NOT NULL,
+          relationship VARCHAR(50) DEFAULT 'FATHER',
           is_primary BOOLEAN DEFAULT FALSE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
-          UNIQUE KEY uk_guardian_nin (nin),
-          INDEX idx_guardian_student (student_id)
+          FOREIGN KEY (guardian_id) REFERENCES guardians(id) ON DELETE CASCADE,
+          UNIQUE KEY uk_mapping (student_id, guardian_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
       `);
 
-      const guardianColumns = await query(
-        "SHOW COLUMNS FROM student_guardians",
-      );
-      const existingCols = guardianColumns.map((col) => col.Field);
-      if (!existingCols.includes("nin")) {
-        await query(
-          "ALTER TABLE student_guardians ADD COLUMN nin VARCHAR(30) NULL AFTER name",
-        );
-      }
-      if (!existingCols.includes("password_hash")) {
-        await query(
-          "ALTER TABLE student_guardians ADD COLUMN password_hash VARCHAR(255) NULL AFTER job",
-        );
-      }
-      if (!existingCols.includes("is_primary")) {
-        await query(
-          "ALTER TABLE student_guardians ADD COLUMN is_primary BOOLEAN DEFAULT FALSE AFTER password_hash",
-        );
-      }
-
-      try {
-        await query(
-          "ALTER TABLE student_guardians ADD UNIQUE KEY uk_guardian_nin (nin)",
-        );
-      } catch (e) {
-        // ignore duplicate index if already exists
-      }
-
-      // The legacy parent summary columns are intentionally not backfilled anymore.
-      // The canonical source of truth is the student_guardians table.
       console.log(
-        "[STARTUP-CHECK] Initialized and verified 'student_guardians' table.",
+        "[STARTUP-CHECK] Initialized and verified 'guardians' and 'student_guardian_mapping' tables.",
       );
     } catch (guardErr) {
       console.error(
-        "[STARTUP-CHECK] Error setting up student_guardians table:",
+        "[STARTUP-CHECK] Error setting up guardian tables:",
         guardErr.message,
       );
     }
@@ -233,6 +213,26 @@ export async function checkAndInitializeDefaults() {
         "[STARTUP-CHECK] Error setting up announcements table:",
         annErr.message,
       );
+    }
+    // 8. Auto-populate academic_tracks if empty
+    try {
+      const trackCountRows = await query("SELECT COUNT(*) AS count FROM academic_tracks");
+      const trackCount = Number(trackCountRows[0]?.count || 0);
+
+      if (trackCount === 0) {
+        console.log("[STARTUP-CHECK] 'academic_tracks' table is empty. Auto-populating default tracks...");
+        await query(`
+          INSERT INTO academic_tracks (id, code, name_ar, name_en, name_fr, description, is_active) VALUES
+          (1, 'PRE_SCHOOL', 'التعليم التحضيري والروضة', 'Early Childhood & Preschool', 'Enseignement Préscolaire', 'تنمية المهارات السلوكية والحركية واللغوية للطفولة المبكرة', 1),
+          (2, 'K12_PRIMARY', 'التعليم الابتدائي', 'Primary Elementary School', 'Enseignement Primaire', 'المرحلة الابتدائية من السنة الأولى إلى الخامسة', 1),
+          (3, 'K12_MIDDLE', 'التعليم المتوسط', 'Middle School / Junior High', 'Enseignement Moyen', 'المرحلة المتوسطة من الأولى إلى الرابعة متوسط', 1),
+          (4, 'K12_HIGH', 'التعليم الثانوي', 'High School / Secondary', 'Enseignement Secondaire', 'المرحلة الثانوية - جذوع مشتركة وشعب تخصصية', 1),
+          (5, 'ACADEMIC_TUTORING', 'دروس الدعم والتقوية الأكاديمية', 'Academic Tutoring & Remedial', 'Soutien Scolaire et Rattrapage', 'حصص مسائية وأسبوعية مكثفة للمراجعة والتحضير للامتحانات الرسمية', 1)
+        `);
+        console.log("[STARTUP-CHECK] Successfully added default academic tracks.");
+      }
+    } catch (trackErr) {
+      console.error("[STARTUP-CHECK] Error auto-populating academic_tracks table:", trackErr.message);
     }
   } catch (err) {
     console.error(

@@ -17,8 +17,12 @@ import {
   Sparkles,
   Phone,
   DoorOpen,
-  ChevronDown
+  ChevronDown,
+  Settings,
+  Lock
 } from 'lucide-react';
+import { useToast } from '../context/UIFeedbackContext';
+import Modal from '../components/Modal';
 import { useLanguage } from '../context/LanguageContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 
@@ -53,18 +57,18 @@ export default function ParentPortal() {
   });
 
   const [selectedChildId, setSelectedChildId] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('alnour_parent_children')) || [];
-      return saved[0]?.id || null;
-    } catch {
-      return null;
-    }
+    return 'all';
   });
 
   const [childData, setChildData] = useState(null);
+  const [allChildrenData, setAllChildrenData] = useState({});
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const toast = useToast();
 
   const token = localStorage.getItem('alnour_parent_token');
 
@@ -87,8 +91,23 @@ export default function ParentPortal() {
           setChildren(childrenRes.data);
           localStorage.setItem('alnour_parent_children', JSON.stringify(childrenRes.data));
           if (!selectedChildId && childrenRes.data.length > 0) {
-            setSelectedChildId(childrenRes.data[0].id);
+            setSelectedChildId('all');
           }
+          
+          // Fetch details for all children in parallel to aggregate stats
+          Promise.all(
+            childrenRes.data.map(c => 
+              fetch(`/api/parent/children/${c.id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
+            )
+          ).then(results => {
+            const aggregated = {};
+            results.forEach((res, idx) => {
+              if (res.success && res.data) {
+                aggregated[childrenRes.data[idx].id] = res.data;
+              }
+            });
+            setAllChildrenData(aggregated);
+          });
         }
 
         // 2. Fetch announcements
@@ -111,7 +130,7 @@ export default function ParentPortal() {
 
   // Fetch child dossier whenever selectedChildId changes
   useEffect(() => {
-    if (!selectedChildId || !token) return;
+    if (!selectedChildId || selectedChildId === 'all' || !token) return;
 
     async function fetchChildDetails() {
       try {
@@ -137,6 +156,45 @@ export default function ParentPortal() {
     navigate('/parent-login');
   };
 
+  const handlePasswordChange = async (e) => {
+    e.preventDefault();
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      toast.error(t('parent_portal.password_mismatch', t('parent_portal.password_mismatch', 'كلمة المرور الجديدة غير متطابقة')));
+      return;
+    }
+    if (passwordForm.newPassword.length < 6) {
+      toast.error(t('parent_portal.password_length', t('parent_portal.password_length', 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل')));
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      const res = await fetch('/api/parent/password', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword
+        })
+      }).then(r => r.json());
+
+      if (res.success) {
+        toast.success(res.message || t('parent_portal.password_update_success', 'تم تحديث كلمة المرور بنجاح'));
+        setIsPasswordModalOpen(false);
+        setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      } else {
+        toast.error(res.message || t('parent_portal.password_update_error', 'حدث خطأ أثناء تحديث كلمة المرور'));
+      }
+    } catch (err) {
+      toast.error(t('parent_portal.internal_error', 'حدث خطأ داخلي. يرجى المحاولة لاحقاً'));
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const selectedChild = children.find(c => c.id === selectedChildId) || children[0];
 
   if (!token) return null;
@@ -156,7 +214,7 @@ export default function ParentPortal() {
                 {t('parent_portal.title', 'فضاء أولياء التلاميذ')}
               </h1>
               <p className="text-[10px] text-slate-400 hidden sm:block">
-                مؤسسة النور الأكاديمية الخاصة
+                {t('parent_portal.subtitle', 'مؤسسة النور الأكاديمية الخاصة')}
               </p>
             </div>
           </div>
@@ -193,6 +251,15 @@ export default function ParentPortal() {
               </button>
             </div>
 
+            {/* Password Update Settings */}
+            <button
+              onClick={() => setIsPasswordModalOpen(true)}
+              title={t('parent_portal.settings', 'إعدادات الحساب')}
+              className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors flex items-center justify-center text-xs"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
             {/* Logout */}
             <button
               onClick={handleLogout}
@@ -213,6 +280,17 @@ export default function ParentPortal() {
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                 <span>{t('parent_portal.switch_child', 'أبنائي المسجلين')}:</span>
               </span>
+              
+              <button
+                onClick={() => setSelectedChildId('all')}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 ${
+                  selectedChildId === 'all'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-600/30 ring-2 ring-emerald-400/30'
+                    : 'bg-slate-800/70 hover:bg-slate-800 text-slate-300 border border-slate-700/60'
+                }`}
+              >
+                <span>{t('parent_portal.all_children', 'عرض عام')}</span>
+              </button>
 
               {children.map(child => {
                 const isSelected = child.id === selectedChildId;
@@ -244,7 +322,210 @@ export default function ParentPortal() {
         {loading && !childData ? (
           <div className="py-24 text-center">
             <div className="w-10 h-10 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-xs text-slate-400">جاري تحميل بيانات فضاء الأولياء...</p>
+            <p className="text-xs text-slate-400">{t('parent_portal.loading', 'جاري تحميل بيانات فضاء الأولياء...')}</p>
+          </div>
+        ) : selectedChildId === 'all' ? (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold text-white mb-4">{t('parent_portal.all_children', 'عرض عام لجميع الأبناء')}</h2>
+            
+            {/* General Overview Stats */}
+            {Object.keys(allChildrenData).length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                {(() => {
+                  const aggregateStats = {
+                    totalRemainingDebt: 0,
+                    absent_unjustified_count: 0,
+                    present_count: 0,
+                    absent_justified_count: 0,
+                    late_count: 0,
+                  };
+                  
+                  Object.values(allChildrenData).forEach(data => {
+                    aggregateStats.totalRemainingDebt += data.financials?.summary?.totalRemainingDebt || 0;
+                    aggregateStats.absent_unjustified_count += data.attendance?.stats?.absent_unjustified_count || 0;
+                    aggregateStats.present_count += data.attendance?.stats?.present_count || 0;
+                    aggregateStats.absent_justified_count += data.attendance?.stats?.absent_justified_count || 0;
+                    aggregateStats.late_count += data.attendance?.stats?.late_count || 0;
+                  });
+
+                  return (
+                    <>
+                      {/* Aggregate Financial Status */}
+                      <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-5 space-y-3 shadow-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                            <Wallet className="w-5 h-5" />
+                          </div>
+                          <span className="text-[11px] font-bold text-slate-400">{t('parent_portal.financial_status', 'الوضعية المالية الإجمالية')}</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-400 block mb-1">{t('parent_portal.total_debt_label', 'إجمالي الديون المتبقية لكافة الأبناء')}</span>
+                          <div className={`text-2xl font-black font-mono ${aggregateStats.totalRemainingDebt > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {formatCurrency(aggregateStats.totalRemainingDebt)}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Aggregate Attendance Stats */}
+                      <div className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-5 space-y-3 shadow-lg">
+                        <div className="flex items-center justify-between">
+                          <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                            <Clock className="w-5 h-5" />
+                          </div>
+                          <span className="text-[11px] font-bold text-slate-400">{t('parent_portal.attendance_record', 'سجل المواظبة الإجمالي')}</span>
+                        </div>
+                        <div>
+                          <span className="text-xs text-slate-400 block mb-1">{t('parent_portal.unjustified_absences_all', 'الغيابات غير المبررة (الكل)')}</span>
+                          <div className={`text-2xl font-black font-mono ${aggregateStats.absent_unjustified_count > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                            {aggregateStats.absent_unjustified_count}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-400">
+                          <span>{t('parent_portal.present', 'حضور')}: {aggregateStats.present_count}</span>
+                          <span>•</span>
+                          <span>{t('parent_portal.justified', 'مبرر')}: {aggregateStats.absent_justified_count}</span>
+                          <span>•</span>
+                          <span>{t('parent_portal.late', 'تأخر')}: {aggregateStats.late_count}</span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {children.map(child => (
+                <div key={child.id} onClick={() => setSelectedChildId(child.id)} className="bg-slate-800/80 border border-slate-700/80 rounded-3xl p-5 hover:bg-slate-700/50 cursor-pointer transition-colors shadow-lg">
+                  <div className="flex items-center gap-4 mb-4">
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 font-bold flex-shrink-0">
+                      {child.photo_url ? (
+                        <img src={child.photo_url} alt={child.first_name_ar} className="w-full h-full object-cover rounded-2xl" />
+                      ) : (
+                        <span>{child.first_name_ar?.charAt(0) || 'ت'}</span>
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white text-lg">{child.first_name_ar} {child.last_name_ar}</h3>
+                      <span className="text-xs text-emerald-400 font-mono">{child.matricule}</span>
+                    </div>
+                  </div>
+                  <div className="space-y-2 text-xs text-slate-400">
+                    <div className="flex justify-between">
+                      <span>{t('parent_portal.level', 'المستوى')}:</span>
+                      <span className="text-white font-medium">{child.track_name_ar}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>{t('parent_portal.class', 'القسم')}:</span>
+                      <span className="text-white font-medium">{child.class_name || t('parent_portal.no_class_assigned', 'غير محدد')}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>{t('parent_portal.status', 'الحالة')}:</span>
+                      <span className="text-white font-medium">{child.status}</span>
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-slate-700/60 flex items-center justify-between text-emerald-400 text-xs font-bold">
+                    <span>{t('parent_portal.view_full_details', 'عرض التفاصيل المكتملة')}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+
+            {/* General Timetable - All Children */}
+            <div className="bg-slate-800/60 border border-slate-700/70 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Calendar className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-bold text-white text-base">
+                  {t('parent_portal.tab_timetable', 'الجدول الأسبوعي')} - {t('parent_portal.all_children', 'عرض عام')}
+                </h3>
+              </div>
+              
+              <div className="space-y-6">
+                {children.map(child => {
+                  const cData = allChildrenData[child.id];
+                  if (!cData || !cData.timetable || cData.timetable.length === 0) return null;
+                  
+                  return (
+                    <div key={child.id} className="bg-slate-900/60 rounded-2xl p-4 border border-slate-700/50">
+                      <h4 className="font-bold text-emerald-400 mb-3 flex items-center gap-2">
+                        <User className="w-4 h-4" />
+                        {child.first_name_ar} {child.last_name_ar} 
+                        <span className="text-xs text-slate-400 font-normal">({child.class_name || child.track_name_ar})</span>
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {DAYS_OF_WEEK.map(day => {
+                          const daySlots = cData.timetable.filter(t => t.day_of_week === day.id);
+                          if (daySlots.length === 0) return null;
+                          return (
+                            <div key={day.id} className="bg-slate-800/80 rounded-xl p-3 space-y-2">
+                              <div className="border-b border-slate-700/80 pb-1.5 mb-1.5">
+                                <span className="font-bold text-xs text-white">
+                                  {lang === 'fr' ? day.fr : lang === 'en' ? day.en : day.ar}
+                                </span>
+                              </div>
+                              {daySlots.map(slot => (
+                                <div key={slot.id} className="flex justify-between items-start text-[11px] gap-2">
+                                  <div>
+                                    <div className="text-slate-200 font-bold">{slot.subject_name_ar}</div>
+                                    <div className="text-slate-400">
+                                      {slot.room && <span className="mr-1"><DoorOpen className="w-2.5 h-2.5 inline mr-0.5" />{slot.room}</span>}
+                                    </div>
+                                  </div>
+                                  <div className="text-emerald-300 font-mono text-[10px] whitespace-nowrap">
+                                    {slot.start_time?.substring(0, 5)} - {slot.end_time?.substring(0, 5)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* All Announcements - General View */}
+            <div className="bg-slate-800/60 border border-slate-700/70 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <Megaphone className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-bold text-white text-base">
+                  {t('parent_portal.tab_announcements', 'الإعلانات والتبليغات')}
+                </h3>
+              </div>
+
+              {announcements.length === 0 ? (
+                <div className="text-center py-6 text-slate-500 text-xs">
+                  {t('parent_portal.no_announcements', 'لا توجد إعلانات موجهة لكم حالياً')}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {announcements.map(ann => (
+                    <div key={ann.id} className="p-4 rounded-2xl bg-slate-800/90 border border-slate-700/80 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold text-sm text-white line-clamp-1">{ann.title}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          ann.priority === 'URGENT'
+                            ? 'bg-rose-500/20 text-rose-300'
+                            : ann.priority === 'IMPORTANT'
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : 'bg-slate-700 text-slate-300'
+                        }`}>
+                          {ann.priority === 'URGENT' ? t('parent_portal.urgent', 'عاجل') : ann.priority === 'IMPORTANT' ? t('parent_portal.important', 'هام') : t('parent_portal.normal', 'عادي')}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400">{ann.content}</p>
+                      <div className="text-[10px] text-slate-500 pt-1">
+                        {formatDate(ann.created_at)} • {ann.target_label || t('parent_portal.everyone', 'الجميع')}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <>
@@ -303,7 +584,7 @@ export default function ParentPortal() {
                             <span className="text-[11px] block font-bold text-emerald-400">
                               {t('parent_portal.no_debt', 'الوضعية المالية مسواة بالكامل')}
                             </span>
-                            <span className="text-xs font-mono font-bold">0.00 د.ج</span>
+                            <span className="text-xs font-mono font-bold">0.00 {t('parent_portal.currency', 'د.ج')}</span>
                           </div>
                         </>
                       ) : (
@@ -371,7 +652,7 @@ export default function ParentPortal() {
                       <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
                         <Wallet className="w-5 h-5" />
                       </div>
-                      <span className="text-[11px] font-bold text-slate-400">الوضعية المالية</span>
+                      <span className="text-[11px] font-bold text-slate-400">{t('parent_portal.financial_status_child', 'الوضعية المالية')}</span>
                     </div>
                     <div>
                       <span className="text-xs text-slate-400 block mb-1">{t('parent_portal.total_debt_label', 'إجمالي الديون المتبقية')}</span>
@@ -383,7 +664,7 @@ export default function ParentPortal() {
                       onClick={() => setActiveTab('finance')}
                       className="text-xs text-emerald-400 font-bold hover:underline flex items-center gap-1 pt-1"
                     >
-                      <span>عرض تفاصيل الأقساط والوصولات</span>
+                      <span>{t('parent_portal.view_receipts', 'عرض تفاصيل الأقساط والوصولات')}</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -394,20 +675,20 @@ export default function ParentPortal() {
                       <div className="w-10 h-10 rounded-2xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
                         <Clock className="w-5 h-5" />
                       </div>
-                      <span className="text-[11px] font-bold text-slate-400">سجل المواظبة</span>
+                      <span className="text-[11px] font-bold text-slate-400">{t('parent_portal.attendance_record_child', 'سجل المواظبة')}</span>
                     </div>
                     <div>
-                      <span className="text-xs text-slate-400 block mb-1">الغيابات غير المبررة</span>
+                      <span className="text-xs text-slate-400 block mb-1">{t('parent_portal.unjustified_absences', 'الغيابات غير المبررة')}</span>
                       <div className="text-2xl font-black font-mono text-rose-400">
                         {childData.attendance?.stats?.absent_unjustified_count || 0}
                       </div>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-slate-400">
-                      <span>حضور: {childData.attendance?.stats?.present_count || 0}</span>
+                      <span>{t('parent_portal.present', 'حضور')}: {childData.attendance?.stats?.present_count || 0}</span>
                       <span>•</span>
-                      <span>مبرر: {childData.attendance?.stats?.absent_justified_count || 0}</span>
+                      <span>{t('parent_portal.justified', 'مبرر')}: {childData.attendance?.stats?.absent_justified_count || 0}</span>
                       <span>•</span>
-                      <span>تأخر: {childData.attendance?.stats?.late_count || 0}</span>
+                      <span>{t('parent_portal.late', 'تأخر')}: {childData.attendance?.stats?.late_count || 0}</span>
                     </div>
                   </div>
 
@@ -417,17 +698,17 @@ export default function ParentPortal() {
                       <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
                         <BookOpen className="w-5 h-5" />
                       </div>
-                      <span className="text-[11px] font-bold text-slate-400">التمدرس والقسم</span>
+                      <span className="text-[11px] font-bold text-slate-400">{t('parent_portal.schooling_class', 'التمدرس والقسم')}</span>
                     </div>
                     <div>
-                      <span className="text-xs text-slate-400 block mb-1">الفوج الحالي</span>
+                      <span className="text-xs text-slate-400 block mb-1">{t('parent_portal.current_group', 'الفوج الحالي')}</span>
                       <div className="text-lg font-bold text-white">
-                        {childData.student?.class_name || 'غير ملحق بفوج بعد'}
+                        {childData.student?.class_name || t('parent_portal.no_group', 'غير ملحق بفوج بعد')}
                       </div>
                     </div>
                     <div className="text-xs text-slate-400">
-                      <span>المستوى: {childData.student?.grade_level || '-'}</span>
-                      {childData.student?.classroom && <span> • القاعة: {childData.student.classroom}</span>}
+                      <span>{t('parent_portal.level', 'المستوى')}: {childData.student?.grade_level || '-'}</span>
+                      {childData.student?.classroom && <span> • {t('parent_portal.room', 'القاعة')}: {childData.student.classroom}</span>}
                     </div>
                   </div>
                 </div>
@@ -445,7 +726,7 @@ export default function ParentPortal() {
                       onClick={() => setActiveTab('announcements')}
                       className="text-xs text-emerald-400 hover:underline font-bold"
                     >
-                      عرض الكل ({announcements.length})
+                      {t('parent_portal.view_all', 'عرض الكل')} ({announcements.length})
                     </button>
                   </div>
 
@@ -466,12 +747,12 @@ export default function ParentPortal() {
                                 ? 'bg-amber-500/20 text-amber-300'
                                 : 'bg-slate-700 text-slate-300'
                             }`}>
-                              {ann.priority === 'URGENT' ? 'عاجل' : ann.priority === 'IMPORTANT' ? 'هام' : 'عادي'}
+                              {ann.priority === 'URGENT' ? t('parent_portal.urgent', 'عاجل') : ann.priority === 'IMPORTANT' ? t('parent_portal.important', 'هام') : t('parent_portal.normal', 'عادي')}
                             </span>
                           </div>
                           <p className="text-xs text-slate-400 line-clamp-2">{ann.content}</p>
                           <div className="text-[10px] text-slate-500 pt-1">
-                            {formatDate(ann.created_at)} • {ann.target_label || 'الجميع'}
+                            {formatDate(ann.created_at)} • {ann.target_label || t('parent_portal.everyone', 'الجميع')}
                           </div>
                         </div>
                       ))}
@@ -494,7 +775,7 @@ export default function ParentPortal() {
                         {t('parent_portal.tab_timetable', 'الجدول الأسبوعي والتخطيط الدراسي')}
                       </h3>
                       <p className="text-xs text-slate-400">
-                        توقيت الحصص والمواد الدراسية والقاعات الخاصة بفوج التلميذ
+                        {t('parent_portal.timetable_desc', 'توقيت الحصص والمواد الدراسية والقاعات الخاصة بفوج التلميذ')}
                       </p>
                     </div>
                   </div>
@@ -513,7 +794,7 @@ export default function ParentPortal() {
                               {lang === 'fr' ? day.fr : lang === 'en' ? day.en : day.ar}
                             </span>
                             <span className="text-[11px] text-slate-400 font-mono">
-                              {daySlots.length} حصص
+                              {daySlots.length} {t('parent_portal.sessions', 'حصص')}
                             </span>
                           </div>
 
@@ -528,7 +809,7 @@ export default function ParentPortal() {
                                     {slot.subject_name_ar}
                                   </span>
                                   <span className="text-[11px] text-slate-400 block mt-0.5">
-                                    الأستاذ: {slot.teacher_name}
+                                    {t('parent_portal.teacher', 'الأستاذ')}: {slot.teacher_name}
                                   </span>
                                   {slot.room && (
                                     <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
@@ -589,8 +870,8 @@ export default function ParentPortal() {
                       </h3>
                       <p className="text-xs text-slate-400 mt-0.5">
                         {childData.financials?.summary?.totalRemainingDebt === 0
-                          ? 'شكراً لكم على الالتزام بتسديد الاشتراكات في آجالها المحددة.'
-                          : 'يرجى التقرب من أمانة الصندوق لتسوية المستحقات المتبقية.'}
+                          ? t('parent_portal.thanks_payment', 'شكراً لكم على الالتزام بتسديد الاشتراكات في آجالها المحددة.')
+                          : t('parent_portal.please_pay', 'يرجى التقرب من أمانة الصندوق لتسوية المستحقات المتبقية.')}
                       </p>
                     </div>
                   </div>
@@ -623,7 +904,7 @@ export default function ParentPortal() {
                           <tr className="border-b border-slate-700 text-slate-400">
                             <th className="py-2.5 px-3">{t('parent_portal.receipt_no', 'رقم الوصل')}</th>
                             <th className="py-2.5 px-3">{t('parent_portal.date', 'التاريخ')}</th>
-                            <th className="py-2.5 px-3">نوع الرسم</th>
+                            <th className="py-2.5 px-3">{t('parent_portal.fee_type', 'نوع الرسم')}</th>
                             <th className="py-2.5 px-3">{t('parent_portal.covered_months', 'الأشهر المغطاة')}</th>
                             <th className="py-2.5 px-3">{t('parent_portal.amount_paid', 'المبلغ المدفوع')}</th>
                             <th className="py-2.5 px-3">{t('parent_portal.remaining_debt', 'المتبقي')}</th>
@@ -665,7 +946,7 @@ export default function ParentPortal() {
                     </div>
                   ) : (
                     <div className="text-center py-6 text-slate-500 text-xs">
-                      لا توجد وصولات أقساط مسجلة بعد
+                      {t('parent_portal.no_receipts', 'لا توجد وصولات أقساط مسجلة بعد')}
                     </div>
                   )}
                 </div>
@@ -684,7 +965,7 @@ export default function ParentPortal() {
                       <table className="w-full text-xs text-right">
                         <thead>
                           <tr className="border-b border-slate-700 text-slate-400">
-                            <th className="py-2.5 px-3">رقم الفاتورة</th>
+                            <th className="py-2.5 px-3">{t('parent_portal.invoice_number', 'رقم الفاتورة')}</th>
                             <th className="py-2.5 px-3">{t('parent_portal.date', 'التاريخ')}</th>
                             <th className="py-2.5 px-3">{t('parent_portal.amount_due', 'المبلغ الإجمالي')}</th>
                             <th className="py-2.5 px-3">{t('parent_portal.amount_paid', 'المسدد')}</th>
@@ -716,7 +997,7 @@ export default function ParentPortal() {
                     </div>
                   ) : (
                     <div className="text-center py-6 text-slate-500 text-xs">
-                      لا توجد مشتريات مسجلة
+                      {t('parent_portal.no_purchases', 'لا توجد مشتريات مسجلة')}
                     </div>
                   )}
                 </div>
@@ -735,7 +1016,7 @@ export default function ParentPortal() {
                       {t('parent_portal.tab_attendance', 'سجل المواظبة والغيابات')}
                     </h3>
                     <p className="text-xs text-slate-400">
-                      متابعة حضور وغياب وتأخرات التلميذ
+                      {t('parent_portal.attendance_followup', 'متابعة حضور وغياب وتأخرات التلميذ')}
                     </p>
                   </div>
                 </div>
@@ -743,7 +1024,7 @@ export default function ParentPortal() {
                 {/* Counter boxes */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center">
-                    <span className="text-[11px] font-bold text-emerald-400 block mb-1">الحضور</span>
+                    <span className="text-[11px] font-bold text-emerald-400 block mb-1">{t('parent_portal.attendance_header', 'الحضور')}</span>
                     <span className="text-2xl font-black font-mono text-emerald-300">
                       {childData.attendance?.stats?.present_count || 0}
                     </span>
@@ -780,11 +1061,11 @@ export default function ParentPortal() {
                     <table className="w-full text-xs text-right">
                       <thead>
                         <tr className="border-b border-slate-700 text-slate-400">
-                          <th className="py-2.5 px-3">التاريخ</th>
-                          <th className="py-2.5 px-3">الحالة</th>
-                          <th className="py-2.5 px-3">وقت الوصول</th>
-                          <th className="py-2.5 px-3">دقائق التأخر</th>
-                          <th className="py-2.5 px-3">السبب / المبرر</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.date', 'التاريخ')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.status', 'الحالة')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.arrival_time', 'وقت الوصول')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.late_minutes', 'دقائق التأخر')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.reason', 'السبب / المبرر')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800">
@@ -801,14 +1082,14 @@ export default function ParentPortal() {
                                   ? 'bg-rose-500/20 text-rose-400'
                                   : 'bg-amber-500/20 text-amber-400'
                               }`}>
-                                {a.status === 'PRESENT' ? 'حاضر'
-                                  : a.status === 'ABSENT_JUSTIFIED' ? 'غياب مبرر'
-                                  : a.status === 'ABSENT_UNJUSTIFIED' ? 'غياب غير مبرر'
-                                  : 'تأخر'}
+                                {a.status === 'PRESENT' ? t('parent_portal.status_present', 'حاضر')
+                                  : a.status === 'ABSENT_JUSTIFIED' ? t('parent_portal.status_absent_justified', 'غياب مبرر')
+                                  : a.status === 'ABSENT_UNJUSTIFIED' ? t('parent_portal.status_absent_unjustified', 'غياب غير مبرر')
+                                  : t('parent_portal.status_late', 'تأخر')}
                               </span>
                             </td>
                             <td className="py-2.5 px-3 font-mono text-slate-400">{a.arrival_time?.substring(0, 5) || '-'}</td>
-                            <td className="py-2.5 px-3 font-mono text-slate-400">{a.minutes_late ? `${a.minutes_late} دقيقة` : '-'}</td>
+                            <td className="py-2.5 px-3 font-mono text-slate-400">{a.minutes_late ? `${a.minutes_late} ${t('parent_portal.minutes', 'دقيقة')}` : '-'}</td>
                             <td className="py-2.5 px-3 text-slate-300">{a.reason || '-'}</td>
                           </tr>
                         ))}
@@ -817,7 +1098,7 @@ export default function ParentPortal() {
                   </div>
                 ) : (
                   <div className="text-center py-6 text-slate-500 text-xs">
-                    لا توجد تسجيلات غياب مسجلة
+                    {t('parent_portal.no_absence', 'لا توجد تسجيلات غياب مسجلة')}
                   </div>
                 )}
               </div>
@@ -835,7 +1116,7 @@ export default function ParentPortal() {
                       {t('parent_portal.tab_grades', 'النقاط والتقييمات الأكاديمية')}
                     </h3>
                     <p className="text-xs text-slate-400">
-                      نتائج الاختبارات والتقييمات الدورية للتلميذ
+                      {t('parent_portal.test_results', 'نتائج الاختبارات والتقييمات الدورية للتلميذ')}
                     </p>
                   </div>
                 </div>
@@ -845,12 +1126,12 @@ export default function ParentPortal() {
                     <table className="w-full text-xs text-right">
                       <thead>
                         <tr className="border-b border-slate-700 text-slate-400">
-                          <th className="py-2.5 px-3">الفصل</th>
-                          <th className="py-2.5 px-3">المادة</th>
-                          <th className="py-2.5 px-3">نوع التقييم</th>
-                          <th className="py-2.5 px-3">العلامة</th>
-                          <th className="py-2.5 px-3">المعامل</th>
-                          <th className="py-2.5 px-3">الملاحظة</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.term', 'الفصل')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.subject', 'المادة')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.eval_type', 'نوع التقييم')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.score', 'العلامة')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.coefficient', 'المعامل')}</th>
+                          <th className="py-2.5 px-3">{t('parent_portal.remark', 'الملاحظة')}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-800">
@@ -890,7 +1171,7 @@ export default function ParentPortal() {
                         {t('parent_portal.tab_announcements', 'الإعلانات والتبليغات المدرسية')}
                       </h3>
                       <p className="text-xs text-slate-400">
-                        كافة الإعلانات الموجهة لكم من إدارة المدرسة
+                        {t('parent_portal.all_announcements', 'كافة الإعلانات الموجهة لكم من إدارة المدرسة')}
                       </p>
                     </div>
                   </div>
@@ -922,7 +1203,7 @@ export default function ParentPortal() {
                                 ? 'bg-amber-500/20 text-amber-300'
                                 : 'bg-slate-700 text-slate-300'
                             }`}>
-                              {ann.priority === 'URGENT' ? 'عاجل' : ann.priority === 'IMPORTANT' ? 'هام' : 'إعلان عادي'}
+                              {ann.priority === 'URGENT' ? t('parent_portal.urgent', 'عاجل') : ann.priority === 'IMPORTANT' ? t('parent_portal.important', 'هام') : t('parent_portal.normal_announcement', 'إعلان عادي')}
                             </span>
                             <h4 className="font-black text-base text-white">{ann.title}</h4>
                           </div>
@@ -936,8 +1217,8 @@ export default function ParentPortal() {
                         </p>
 
                         <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-800 text-[11px] text-slate-500">
-                          <span>الجهة المستهدفة: {ann.target_label || 'جميع الأولياء'}</span>
-                          {ann.author_name && <span>الناشر: {ann.author_name}</span>}
+                          <span>{t('parent_portal.target', 'الجهة المستهدفة')}: {ann.target_label || t('parent_portal.everyone', 'جميع الأولياء')}</span>
+                          {ann.author_name && <span>{t('parent_portal.publisher', 'الناشر')}: {ann.author_name}</span>}
                         </div>
                       </div>
                     ))}
@@ -948,6 +1229,93 @@ export default function ParentPortal() {
           </>
         )}
       </main>
+
+      {/* Password Update Modal */}
+      <Modal
+        isOpen={isPasswordModalOpen}
+        onClose={() => {
+          setIsPasswordModalOpen(false);
+          setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+        }}
+        title="{t('parent_portal.update_password', 'تحديث كلمة المرور')}"
+        maxWidth="max-w-md"
+      >
+        <form onSubmit={handlePasswordChange} className="p-6 space-y-4">
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700">
+              {t('parent_portal.current_password', 'كلمة المرور الحالية')}
+            </label>
+            <div className="relative">
+              <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="password"
+                required
+                value={passwordForm.currentPassword}
+                onChange={e => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                dir="ltr"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1 pt-2">
+            <label className="text-xs font-bold text-slate-700">
+              {t('parent_portal.new_password', 'كلمة المرور الجديدة')}
+            </label>
+            <div className="relative">
+              <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={passwordForm.newPassword}
+                onChange={e => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                dir="ltr"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-bold text-slate-700">
+              {t('parent_portal.confirm_password', 'تأكيد كلمة المرور')}
+            </label>
+            <div className="relative">
+              <Lock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={passwordForm.confirmPassword}
+                onChange={e => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pr-10 pl-4 py-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                dir="ltr"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 mt-6">
+            <button
+              type="button"
+              onClick={() => {
+                setIsPasswordModalOpen(false);
+                setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+              }}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+            >
+              {t('parent_portal.cancel', 'إلغاء')}
+            </button>
+            <button
+              type="submit"
+              disabled={isChangingPassword}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30 transition-all"
+            >
+              {isChangingPassword ? t('parent_portal.saving', 'جاري الحفظ...') : t('parent_portal.save', 'حفظ')}
+            </button>
+          </div>
+        </form>
+      </Modal>
+
     </div>
   );
 }

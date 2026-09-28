@@ -25,6 +25,7 @@ import uploadRoutes from './routes/uploadRoutes.js';
 import roomRoutes from './routes/roomRoutes.js';
 import announcementRoutes from './routes/announcementRoutes.js';
 import parentRoutes from './routes/parentRoutes.js';
+import guardianRoutes from './routes/guardianRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +58,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/students', studentRoutes);
+app.use('/api/guardians', guardianRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/teachers', teacherRoutes);
 app.use('/api/timetable', timetableRoutes);

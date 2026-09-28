@@ -44,63 +44,59 @@ async function createOrUpdateGuardian(
   const job = parentData.job?.trim() || null;
   const nin = normalizeGuardianNin(parentData.nin);
 
+  let guardianId = null;
+  let passwordHash = null;
+  let passwordSet = false;
+  const generatedPassword = parentData.generatedPassword || parentData.password || "";
+
   if (nin) {
-    const [existing] = await query(
-      `SELECT * FROM student_guardians WHERE nin = ? LIMIT 1`,
-      [nin],
+    const [existingGuardian] = await query(
+      `SELECT * FROM guardians WHERE nin = ? LIMIT 1`,
+      [nin]
     );
 
-    if (existing) {
-      const generatedPassword =
-        parentData.generatedPassword || parentData.password || "";
-      const passwordHash = generatedPassword
-        ? await bcrypt.hash(generatedPassword, 10)
-        : existing.password_hash;
-
+    if (existingGuardian) {
+      guardianId = existingGuardian.id;
+      
+      // If the existing guardian doesn't have a password, and we generated one, save it.
+      if (!existingGuardian.password_hash && generatedPassword) {
+        passwordHash = await bcrypt.hash(generatedPassword, 10);
+        passwordSet = true;
+      } else {
+        passwordHash = existingGuardian.password_hash;
+      }
+      
+      // Update guardian profile
       await query(
-        `UPDATE student_guardians
-         SET student_id = ?, relationship = ?, name = ?, phone = ?, email = ?, job = ?, password_hash = COALESCE(?, password_hash), is_primary = ?
-         WHERE id = ?`,
-        [
-          studentId,
-          relationship,
-          name,
-          phone,
-          email,
-          job,
-          passwordHash,
-          isPrimary ? 1 : 0,
-          existing.id,
-        ],
+        `UPDATE guardians SET name = ?, phone = ?, email = ?, job = ?, password_hash = ? WHERE id = ?`,
+        [name, phone, email, job, passwordHash, guardianId]
       );
-
-      return existing.id;
     }
   }
 
-  const generatedPassword =
-    parentData.generatedPassword || parentData.password || "";
-  const passwordHash = generatedPassword
-    ? await bcrypt.hash(generatedPassword, 10)
-    : null;
+  if (!guardianId) {
+    if (generatedPassword) {
+      passwordHash = await bcrypt.hash(generatedPassword, 10);
+      passwordSet = true;
+    } else {
+      passwordHash = null;
+    }
+    const result = await query(
+      `INSERT INTO guardians (name, nin, phone, email, job, password_hash) VALUES (?, ?, ?, ?, ?, ?)`,
+      [name, nin || null, phone, email, job, passwordHash]
+    );
+    guardianId = result.insertId;
+  }
 
-  const result = await query(
-    `INSERT INTO student_guardians (student_id, relationship, name, nin, phone, email, job, password_hash, is_primary)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      studentId,
-      relationship,
-      name,
-      nin || null,
-      phone,
-      email,
-      job,
-      passwordHash,
-      isPrimary ? 1 : 0,
-    ],
+  // Insert or update mapping
+  await query(
+    `INSERT INTO student_guardian_mapping (student_id, guardian_id, relationship, is_primary)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE relationship = VALUES(relationship), is_primary = VALUES(is_primary)`,
+    [studentId, guardianId, relationship, isPrimary ? 1 : 0]
   );
 
-  return result.insertId;
+  return { guardianId, passwordSet };
 }
 
 export async function listStudents(req, res) {
@@ -126,19 +122,20 @@ export async function listStudents(req, res) {
         (
           SELECT JSON_ARRAYAGG(
             JSON_OBJECT(
-              'id', sg.id,
-              'student_id', sg.student_id,
-              'relationship', sg.relationship,
-              'name', sg.name,
-              'nin', sg.nin,
-              'phone', sg.phone,
-              'email', sg.email,
-              'job', sg.job,
-              'is_primary', sg.is_primary
+              'id', g.id,
+              'student_id', sgm.student_id,
+              'relationship', sgm.relationship,
+              'name', g.name,
+              'nin', g.nin,
+              'phone', g.phone,
+              'email', g.email,
+              'job', g.job,
+              'is_primary', sgm.is_primary
             )
           )
-          FROM student_guardians sg
-          WHERE sg.student_id = s.id
+          FROM student_guardian_mapping sgm
+          JOIN guardians g ON sgm.guardian_id = g.id
+          WHERE sgm.student_id = s.id
         ) AS guardians_json,
         (
           SELECT GROUP_CONCAT(DISTINCT cl.name ORDER BY cl.name SEPARATOR ', ')
@@ -189,9 +186,10 @@ export async function listStudents(req, res) {
         OR s.phone LIKE ?
         OR s.email LIKE ?
         OR EXISTS (
-          SELECT 1 FROM student_guardians sg 
-          WHERE sg.student_id = s.id 
-          AND (sg.name LIKE ? OR sg.phone LIKE ? OR sg.nin LIKE ?)
+          SELECT 1 FROM student_guardian_mapping sgm 
+          JOIN guardians g ON sgm.guardian_id = g.id
+          WHERE sgm.student_id = s.id 
+          AND (g.name LIKE ? OR g.phone LIKE ? OR g.nin LIKE ?)
         )
       )`;
       const term = `%${search}%`;
@@ -241,10 +239,11 @@ export async function getStudentDossier(req, res) {
     // 1.1 Guardians (Multiple Parents & Emergency Contacts)
     const guardiansRaw = await query(
       `
-      SELECT id, student_id, relationship, name, nin, phone, email, job, is_primary
-      FROM student_guardians
-      WHERE student_id = ?
-      ORDER BY is_primary DESC, id ASC
+      SELECT g.id, sgm.student_id, sgm.relationship, g.name, g.nin, g.phone, g.email, g.job, sgm.is_primary
+      FROM student_guardian_mapping sgm
+      JOIN guardians g ON sgm.guardian_id = g.id
+      WHERE sgm.student_id = ?
+      ORDER BY sgm.is_primary DESC, g.id ASC
     `,
       [id],
     );
@@ -509,49 +508,30 @@ export async function createStudent(req, res) {
 
     validateUniqueGuardianNins(validParents);
 
-    // Save multiple guardians in student_guardians
+    // Save multiple guardians in student_guardian_mapping
+    const generatedPasswords = [];
     if (validParents.length > 0) {
-      const generatedPasswordByNin = new Map();
-
       for (const [index, p] of validParents.entries()) {
         const normalizedNin = normalizeGuardianNin(p.nin);
-        let generatedPassword =
-          p.generatedPassword ||
-          p.password ||
-          (normalizedNin ? generateGuardianPassword() : "");
-
-        if (normalizedNin) {
-          generatedPasswordByNin.set(normalizedNin, generatedPassword);
+        
+        let generatedPassword = p.generatedPassword || p.password || "";
+        if (!generatedPassword && normalizedNin) {
+          generatedPassword = generateGuardianPassword();
         }
 
-        if (normalizedNin && !p.generatedPassword && !p.password) {
-          p.generatedPassword = generatedPassword;
-        }
-
-        await createOrUpdateGuardian(
+        const { passwordSet } = await createOrUpdateGuardian(
           newStudentId,
           { ...p, generatedPassword },
           Boolean(p.is_primary || index === 0),
         );
-      }
 
-      const generatedPasswords = [];
-      for (const parent of validParents) {
-        const normalizedNin = normalizeGuardianNin(parent.nin);
-        if (!normalizedNin) continue;
-        const generatedPassword =
-          parent.generatedPassword ||
-          parent.password ||
-          generatedPasswordByNin.get(normalizedNin) ||
-          generateGuardianPassword();
-        if (!parent.generatedPassword && !parent.password) {
-          parent.generatedPassword = generatedPassword;
-          generatedPasswordByNin.set(normalizedNin, generatedPassword);
+        if (passwordSet && normalizedNin) {
+          generatedPasswords.push({
+            nin: normalizedNin,
+            password: generatedPassword,
+            name: p.name || 'ولي أمر',
+          });
         }
-        generatedPasswords.push({
-          nin: normalizedNin,
-          password: generatedPassword,
-        });
       }
       res.locals.generatedPasswords = generatedPasswords;
     } else if (parent_name?.trim() || parent_phone?.trim()) {
@@ -598,13 +578,13 @@ export async function createStudent(req, res) {
       req.ip,
     );
 
-    const generatedPasswords = res.locals.generatedPasswords || [];
+    const finalGeneratedPasswords = res.locals.generatedPasswords || generatedPasswords || [];
 
     res.status(201).json({
       success: true,
       message: "تم تسجيل التلميذ بنجاح / Student enrolled successfully",
       data: { id: newStudentId, matricule },
-      generatedPasswords,
+      generatedPasswords: finalGeneratedPasswords,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -617,56 +597,43 @@ export async function updateStudent(req, res) {
 
   try {
     // Handle multiple guardians update
+    const generatedPasswords = [];
     if (fields.parents !== undefined && Array.isArray(fields.parents)) {
       const validParents = fields.parents.filter(
         (p) => p && (p.name?.trim() || p.phone?.trim() || p.nin?.trim()),
       );
       validateUniqueGuardianNins(validParents);
-      await query("DELETE FROM student_guardians WHERE student_id = ?", [id]);
+      await query("DELETE FROM student_guardian_mapping WHERE student_id = ?", [id]);
 
       if (validParents.length > 0) {
         for (const [index, p] of validParents.entries()) {
           const normalizedNin = normalizeGuardianNin(p.nin);
-          const generatedPassword =
-            p.generatedPassword ||
-            p.password ||
-            (normalizedNin ? generateGuardianPassword() : "");
-
-          if (normalizedNin && !p.generatedPassword && !p.password) {
-            p.generatedPassword = generatedPassword;
+          
+          let generatedPassword = p.generatedPassword || p.password || "";
+          if (!generatedPassword && normalizedNin) {
+            generatedPassword = generateGuardianPassword();
           }
 
-          await createOrUpdateGuardian(
+          const { passwordSet } = await createOrUpdateGuardian(
             id,
             { ...p, generatedPassword },
             Boolean(p.is_primary || index === 0),
           );
+
+          if (passwordSet && normalizedNin) {
+            generatedPasswords.push({
+              nin: normalizedNin,
+              password: generatedPassword,
+              name: p.name || 'ولي أمر'
+            });
+          }
         }
       }
+      res.locals.generatedPasswords = generatedPasswords;
     }
 
     const updateCols = [];
     const updateVals = [];
-
-    const generatedPasswords = [];
-    if (fields.parents && Array.isArray(fields.parents)) {
-      for (const parent of fields.parents) {
-        if (parent?.nin) {
-          const normalizedNin = normalizeGuardianNin(parent.nin);
-          const generatedPassword =
-            parent.generatedPassword ||
-            parent.password ||
-            generateGuardianPassword();
-          if (!parent.generatedPassword && !parent.password) {
-            parent.generatedPassword = generatedPassword;
-          }
-          generatedPasswords.push({
-            nin: normalizedNin,
-            password: generatedPassword,
-          });
-        }
-      }
-    }
 
     const allowed = [
       "national_id",
@@ -791,8 +758,8 @@ export async function exportStudentsExcel(req, res) {
         t.name_ar AS 'المسار_الدراسي',
         s.phone AS 'هاتف_التلميذ',
         s.email AS 'بريد_التلميذ',
-        COALESCE((SELECT sg.name FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), '') AS 'اسم_الولي',
-        COALESCE((SELECT sg.phone FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), '') AS 'هاتف_الولي',
+        COALESCE((SELECT g.name FROM student_guardian_mapping sgm JOIN guardians g ON sgm.guardian_id = g.id WHERE sgm.student_id = s.id AND sgm.is_primary = 1 ORDER BY g.id LIMIT 1), '') AS 'اسم_الولي',
+        COALESCE((SELECT g.phone FROM student_guardian_mapping sgm JOIN guardians g ON sgm.guardian_id = g.id WHERE sgm.student_id = s.id AND sgm.is_primary = 1 ORDER BY g.id LIMIT 1), '') AS 'هاتف_الولي',
         s.status AS 'الحالة_الأكاديمية'
       FROM students s
       LEFT JOIN classes c ON s.current_class_id = c.id

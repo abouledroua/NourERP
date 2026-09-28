@@ -37,8 +37,8 @@ export async function lookupParentByNin(req, res) {
 
   try {
     const [guardian] = await query(
-      `SELECT id, student_id, relationship, name, nin, phone, email, job, is_primary
-       FROM student_guardians
+      `SELECT id, name, nin, phone, email, job
+       FROM guardians
        WHERE nin = ?
        LIMIT 1`,
       [nin],
@@ -74,9 +74,9 @@ export async function parentLogin(req, res) {
 
   try {
     const [guardian] = await query(
-      `SELECT sg.*
-       FROM student_guardians sg
-       WHERE sg.nin = ?
+      `SELECT g.*
+       FROM guardians g
+       WHERE g.nin = ?
        LIMIT 1`,
       [nin],
     );
@@ -128,8 +128,9 @@ export async function parentLogin(req, res) {
       FROM students s
       JOIN academic_tracks t ON s.academic_track_id = t.id
       LEFT JOIN classes c ON s.current_class_id = c.id
-      LEFT JOIN student_guardians sg ON sg.student_id = s.id
-      WHERE sg.nin = ?
+      LEFT JOIN student_guardian_mapping sgm ON sgm.student_id = s.id
+      LEFT JOIN guardians g ON sgm.guardian_id = g.id
+      WHERE g.nin = ?
       ORDER BY s.id ASC
     `,
       [nin],
@@ -199,7 +200,8 @@ export async function getParentChildren(req, res) {
       FROM students s
       JOIN academic_tracks t ON s.academic_track_id = t.id
       LEFT JOIN classes c ON s.current_class_id = c.id
-      LEFT JOIN student_guardians sg ON sg.student_id = s.id
+      LEFT JOIN student_guardian_mapping sgm ON sgm.student_id = s.id
+      LEFT JOIN guardians sg ON sgm.guardian_id = sg.id
       WHERE 1=1`;
 
     let sql = baseQuery;
@@ -244,7 +246,8 @@ export async function getChildDetails(req, res) {
     let verifySql = `
       SELECT s.id
       FROM students s
-      LEFT JOIN student_guardians sg ON sg.student_id = s.id
+      LEFT JOIN student_guardian_mapping sgm ON sgm.student_id = s.id
+      LEFT JOIN guardians sg ON sgm.guardian_id = sg.id
       WHERE s.id = ? AND (`;
     const params = [studentId];
 
@@ -386,7 +389,7 @@ export async function getParentAnnouncements(req, res) {
 
   try {
     const params = [];
-    let childrenSql = `SELECT s.id AS student_id, s.academic_track_id, s.current_class_id FROM students s LEFT JOIN student_guardians sg ON sg.student_id = s.id WHERE 1=1`;
+    let childrenSql = `SELECT s.id AS student_id, s.academic_track_id, s.current_class_id FROM students s LEFT JOIN student_guardian_mapping sgm ON sgm.student_id = s.id LEFT JOIN guardians sg ON sgm.guardian_id = sg.id WHERE 1=1`;
 
     if (guardianId) {
       childrenSql += " AND sg.id = ?";
@@ -450,5 +453,39 @@ export async function getParentAnnouncements(req, res) {
     res.json({ success: true, data: announcements });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+export async function updateParentPassword(req, res) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    // The parent is authenticated via authenticateToken, so we have req.user
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: "Unauthorized." });
+    }
+    const guardianId = req.user.id;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: "Current and new password are required." });
+    }
+
+    const [guardian] = await query("SELECT password_hash FROM guardians WHERE id = ?", [guardianId]);
+    if (!guardian) {
+      return res.status(404).json({ success: false, message: "Guardian not found." });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, guardian.password_hash);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: "كلمة المرور الحالية غير صحيحة / Incorrect current password." });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await query("UPDATE guardians SET password_hash = ? WHERE id = ?", [newHash, guardianId]);
+
+    res.json({ success: true, message: "تم تغيير كلمة المرور بنجاح / Password updated successfully." });
+  } catch (err) {
+    console.error("updateParentPassword error:", err);
+    res.status(500).json({ success: false, message: "حدث خطأ داخلي / Internal server error" });
   }
 }

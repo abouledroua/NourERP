@@ -11,6 +11,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Students from './pages/Students';
 import StudentDetails from './pages/StudentDetails';
+import Guardians from './pages/Guardians';
 import Classes from './pages/Classes';
 import ClassDetails from './pages/ClassDetails';
 import Teachers from './pages/Teachers';
@@ -69,6 +70,7 @@ export default function App() {
                 }>
                   <Route index element={<Dashboard />} />
                   <Route path="students" element={<Students />} />
+                  <Route path="guardians" element={<Guardians />} />
                   <Route path="students/:id" element={<StudentDetails />} />
                   <Route path="classes" element={<Classes />} />
                   <Route path="classes/:id" element={<ClassDetails />} />

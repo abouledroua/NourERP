@@ -157,8 +157,8 @@ export async function getSingleReceipt(req, res) {
         s.matricule,
         s.first_name_ar,
         s.last_name_ar,
-        COALESCE((SELECT sg.name FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), 'ولي أمر') AS parent_name,
-        COALESCE((SELECT sg.phone FROM student_guardians sg WHERE sg.student_id = s.id AND sg.is_primary = 1 ORDER BY sg.id LIMIT 1), '') AS parent_phone,
+        COALESCE((SELECT g.name FROM guardians g JOIN student_guardian_mapping sgm ON g.id = sgm.guardian_id WHERE sgm.student_id = s.id AND sgm.is_primary = 1 ORDER BY g.id LIMIT 1), 'ولي أمر') AS parent_name,
+        COALESCE((SELECT g.phone FROM guardians g JOIN student_guardian_mapping sgm ON g.id = sgm.guardian_id WHERE sgm.student_id = s.id AND sgm.is_primary = 1 ORDER BY g.id LIMIT 1), '') AS parent_phone,
         c.name AS class_name,
         u.full_name AS cashier_name
       FROM payments p

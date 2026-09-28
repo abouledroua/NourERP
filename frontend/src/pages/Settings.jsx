@@ -12,7 +12,11 @@ import {
   Upload, 
   CheckCircle2, 
   ShieldAlert, 
-  Check 
+  Check,
+  Plus,
+  Edit2,
+  Trash2,
+  X
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../utils/api';
@@ -43,6 +47,59 @@ export default function Settings() {
   const [backups, setBackups] = useState([]);
   const [saving, setSaving] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
+
+  // Track Form Modal
+  const [showTrackModal, setShowTrackModal] = useState(false);
+  const [trackFormData, setTrackFormData] = useState({
+    id: null,
+    code: '',
+    name_ar: '',
+    name_en: '',
+    name_fr: '',
+    description: '',
+    is_active: true
+  });
+
+  const handleOpenTrackModal = (track = null) => {
+    if (track) {
+      setTrackFormData({ ...track });
+    } else {
+      setTrackFormData({
+        id: null,
+        code: '',
+        name_ar: '',
+        name_en: '',
+        name_fr: '',
+        description: '',
+        is_active: true
+      });
+    }
+    setShowTrackModal(true);
+  };
+
+  const handleSaveTrack = async (e) => {
+    e.preventDefault();
+    try {
+      setSaving(true);
+      let res;
+      if (trackFormData.id) {
+        res = await api.put(`/settings/tracks/${trackFormData.id}/edit`, trackFormData);
+      } else {
+        res = await api.post('/settings/tracks', trackFormData);
+      }
+      if (res.success) {
+        toast.success(res.message || t('toast.success'));
+        setShowTrackModal(false);
+        fetchFullSettings();
+        refreshSettings();
+      }
+    } catch (err) {
+      toast.error(err.message || t('toast.error'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
 
   const fetchFullSettings = async () => {
     try {
@@ -94,6 +151,29 @@ export default function Settings() {
       }
     } catch (err) {
       toast.error(err.message || t('toast.track_status_failed'));
+    }
+  };
+
+  const handleDeleteTrack = async (track) => {
+    const confirmed = await confirm({
+      title: t('settings.delete_track_title', 'Delete Track'),
+      message: t('settings.delete_track_msg', { code: track.code }),
+      confirmText: t('dialog.delete_btn', 'Delete'),
+      cancelText: t('dialog.cancel_btn'),
+      type: 'danger'
+    });
+
+    if (!confirmed) return;
+
+    try {
+      const res = await api.delete(`/settings/tracks/${track.id}`);
+      if (res.success) {
+        toast.success(res.message || t('toast.success'));
+        fetchFullSettings();
+        refreshSettings();
+      }
+    } catch (err) {
+      toast.error(err.message || t('toast.error'));
     }
   };
 
@@ -311,33 +391,164 @@ export default function Settings() {
 
       {/* TAB 2: ACADEMIC TRACKS TOGGLES */}
       {activeTab === 'tracks' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
-          <p className="text-xs text-slate-500">
-            {t('settings.tracks_description')}
-          </p>
+        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4 relative">
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-xs text-slate-500">
+              {t('settings.tracks_description')}
+            </p>
+            <button
+              onClick={() => handleOpenTrackModal()}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>{t('settings.add_track', 'Add Track')}</span>
+            </button>
+          </div>
 
           <div className="space-y-3">
             {tracks.map(tr => (
-              <div key={tr.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+              <div key={tr.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <h4 className="text-sm font-black text-slate-900">{tr.name_ar}</h4>
-                  <p className="text-xs text-slate-500">{tr.name_en} | {tr.name_fr}</p>
+                  <p className="text-xs text-slate-500">{tr.name_en} | {tr.name_fr} - Code: {tr.code}</p>
                   <p className="text-[11px] text-slate-400 mt-1">{tr.description}</p>
                 </div>
+                
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <button
+                    onClick={() => handleToggleTrack(tr.id, tr.is_active)}
+                    className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                      tr.is_active 
+                        ? 'bg-emerald-600 text-white shadow-xs' 
+                        : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
+                    }`}
+                  >
+                    {tr.is_active ? t('settings.track_active') : t('settings.track_inactive')}
+                  </button>
+                  
+                  <button
+                    onClick={() => handleOpenTrackModal(tr)}
+                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                    title={t('settings.edit_track', 'Edit Track')}
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
 
-                <button
-                  onClick={() => handleToggleTrack(tr.id, tr.is_active)}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    tr.is_active 
-                      ? 'bg-emerald-600 text-white shadow-xs' 
-                      : 'bg-slate-200 text-slate-600 hover:bg-slate-300'
-                  }`}
-                >
-                  {tr.is_active ? t('settings.track_active') : t('settings.track_inactive')}
-                </button>
+                  <button
+                    onClick={() => handleDeleteTrack(tr)}
+                    className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    title={t('dialog.delete_btn', 'Delete')}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
+
+          {/* Track Modal */}
+          {showTrackModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+              <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]">
+                <div className="flex items-center justify-between p-6 border-b border-slate-100">
+                  <h3 className="font-bold text-lg text-slate-900">
+                    {trackFormData.id ? t('settings.edit_track', 'Edit Track') : t('settings.add_track', 'Add Track')}
+                  </h3>
+                  <button onClick={() => setShowTrackModal(false)} className="text-slate-400 hover:text-slate-600">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="p-6 overflow-y-auto">
+                  <form id="track-form" onSubmit={handleSaveTrack} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('settings.track_code')}</label>
+                      <input
+                        type="text"
+                        required
+                        value={trackFormData.code}
+                        onChange={(e) => setTrackFormData({ ...trackFormData, code: e.target.value })}
+                        className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:outline-none uppercase font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('settings.track_name_ar')}</label>
+                      <input
+                        type="text"
+                        required
+                        value={trackFormData.name_ar}
+                        onChange={(e) => setTrackFormData({ ...trackFormData, name_ar: e.target.value })}
+                        className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">{t('settings.track_name_en')}</label>
+                        <input
+                          type="text"
+                          required
+                          value={trackFormData.name_en}
+                          onChange={(e) => setTrackFormData({ ...trackFormData, name_en: e.target.value })}
+                          className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">{t('settings.track_name_fr')}</label>
+                        <input
+                          type="text"
+                          required
+                          value={trackFormData.name_fr}
+                          onChange={(e) => setTrackFormData({ ...trackFormData, name_fr: e.target.value })}
+                          className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1">{t('settings.track_description')}</label>
+                      <textarea
+                        rows="2"
+                        value={trackFormData.description || ''}
+                        onChange={(e) => setTrackFormData({ ...trackFormData, description: e.target.value })}
+                        className="w-full border border-slate-200 rounded-xl p-2.5 text-sm bg-slate-50 focus:ring-2 focus:ring-emerald-500 focus:outline-none resize-none"
+                      />
+                    </div>
+                    
+                    <div className="flex items-center gap-2 pt-2">
+                      <input
+                        type="checkbox"
+                        id="track_active"
+                        checked={trackFormData.is_active}
+                        onChange={(e) => setTrackFormData({ ...trackFormData, is_active: e.target.checked })}
+                        className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
+                      />
+                      <label htmlFor="track_active" className="text-sm font-bold text-slate-700">
+                        {t('settings.track_active', 'Active')}
+                      </label>
+                    </div>
+                  </form>
+                </div>
+                
+                <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-slate-50/50">
+                  <button
+                    type="button"
+                    onClick={() => setShowTrackModal(false)}
+                    className="px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl font-bold text-sm transition-colors"
+                  >
+                    {t('dialog.cancel_btn', 'Cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    form="track-form"
+                    disabled={saving}
+                    className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all shadow-md shadow-emerald-600/30 flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {saving && <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                    {t('dialog.save_btn', 'Save')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

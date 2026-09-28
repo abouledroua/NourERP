@@ -49,6 +49,7 @@ export default function Students() {
 
   // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [passwordModalData, setPasswordModalData] = useState(null);
   const [editingStudent, setEditingStudent] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const firstNameArRef = useRef(null);
@@ -151,7 +152,7 @@ export default function Students() {
           ...current,
           nin: normalized,
           relationship: resolveGuardianRelationship(prev.parents || [], index, matchedRelationship),
-          name: current.name?.trim() || res.data.name || '',
+          name: current.name?.trim() || (res.data.name && res.data.name !== 'ولي أمر' ? res.data.name : ''),
           phone: current.phone?.trim() || res.data.phone || '',
           email: current.email?.trim() || res.data.email || '',
           job: current.job?.trim() || res.data.job || '',
@@ -397,8 +398,7 @@ export default function Students() {
         const res = await api.put(`/students/${editingStudent.id}`, payload);
         if (res.success) {
           if (Array.isArray(res.generatedPasswords) && res.generatedPasswords.length > 0) {
-            const passwordText = res.generatedPasswords.map((entry) => `${entry.nin}: ${entry.password}`).join(' | ');
-            toast.info(`Parent passwords generated: ${passwordText}`);
+            setPasswordModalData(res.generatedPasswords);
           }
           toast.success(res.message || t('toast.student_updated', 'تم تحديث بيانات التلميذ بنجاح'));
           setIsModalOpen(false);
@@ -409,8 +409,7 @@ export default function Students() {
         const res = await api.post('/students', payload);
         if (res.success) {
           if (Array.isArray(res.generatedPasswords) && res.generatedPasswords.length > 0) {
-            const passwordText = res.generatedPasswords.map((entry) => `${entry.nin}: ${entry.password}`).join(' | ');
-            toast.info(`Parent passwords generated: ${passwordText}`);
+            setPasswordModalData(res.generatedPasswords);
           }
           toast.success(res.message || t('toast.student_created', 'تم تسجيل التلميذ بنجاح'));
           setIsModalOpen(false);
@@ -902,6 +901,7 @@ export default function Students() {
           ? `${t('students.edit', 'تعديل بيانات التلميذ')}: ${editingStudent.first_name_ar} ${editingStudent.last_name_ar} (${editingStudent.matricule})`
           : t('students.modal_add_title')}
         maxWidth="max-w-3xl"
+        disableOutsideClick={true}
         headerActions={
           <div className="flex items-center gap-2">
             <button
@@ -1263,9 +1263,17 @@ export default function Students() {
                           type="text"
                           value={parent.nin || ''}
                           onChange={e => handleParentChange(idx, 'nin', e.target.value)}
-                          onBlur={() => {
-                            if (parent.nin) {
-                              lookupParentByNin(idx, parent.nin);
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              if (e.target.value) {
+                                lookupParentByNin(idx, e.target.value);
+                              }
+                            }
+                          }}
+                          onBlur={(e) => {
+                            if (e.target.value) {
+                              lookupParentByNin(idx, e.target.value);
                             }
                           }}
                           placeholder={t('students.nin_placeholder', '18 رقماً أو رقم بطاقة التعريف الوطنية')}
@@ -1360,6 +1368,55 @@ export default function Students() {
           </div>
         </form>
       </Modal>
+
+      {/* =========================================================================
+          MODAL: SHOW GENERATED PASSWORDS
+          ========================================================================= */}
+      <Modal
+        isOpen={!!passwordModalData}
+        onClose={() => setPasswordModalData(null)}
+        title="معلومات الدخول للأولياء / Guardian Login Credentials"
+        maxWidth="max-w-md"
+        disableOutsideClick={true}
+      >
+        <div className="p-6 space-y-6">
+          <div className="flex flex-col items-center justify-center p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-emerald-600 mb-4">
+            <CheckCircle2 className="w-12 h-12 mb-3" />
+            <h4 className="font-bold text-lg text-center">تم إنشاء حسابات الأولياء بنجاح</h4>
+            <p className="text-sm text-center mt-1">Guardians accounts created successfully</p>
+          </div>
+          
+          <div className="space-y-4">
+            <p className="text-sm text-slate-500 font-medium text-center">
+              يرجى الاحتفاظ بمعلومات الدخول التالية. لن يتم عرض كلمات المرور مرة أخرى.
+            </p>
+            {passwordModalData && passwordModalData.map((cred, idx) => (
+              <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-2">
+                <div className="flex justify-between items-center text-sm font-bold text-slate-700 pb-2 border-b border-slate-200">
+                  <span>{cred.name || 'ولي أمر'}</span>
+                  <span className="text-xs font-mono bg-slate-200 px-2 py-1 rounded text-slate-600">{cred.nin}</span>
+                </div>
+                <div className="flex justify-between items-center mt-2">
+                  <span className="text-xs text-slate-500">كلمة المرور (Password):</span>
+                  <span className="font-mono font-bold text-emerald-600 text-lg tracking-widest bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
+                    {cred.password}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-4 flex justify-end">
+            <button
+              onClick={() => setPasswordModalData(null)}
+              className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-600/30 transition-all w-full"
+            >
+              تم / Done
+            </button>
+          </div>
+        </div>
+      </Modal>
+
     </div>
   );
 }

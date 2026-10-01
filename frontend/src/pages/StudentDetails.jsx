@@ -28,7 +28,8 @@ import {
   Plus,
   Trash2,
   Users,
-  Check
+  Check,
+  Coins
 } from 'lucide-react';
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
@@ -39,6 +40,7 @@ import PhotoUpload from '../components/PhotoUpload';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import ArabicInput from '../components/ArabicInput';
 import DateInput from '../components/DateInput';
+import CustomSelect from '../components/CustomSelect';
 
 export default function StudentDetails() {
   const { id } = useParams();
@@ -59,7 +61,9 @@ export default function StudentDetails() {
   const [assignFormData, setAssignFormData] = useState({
     class_id: '',
     roll_number: '',
-    remarks: ''
+    remarks: '',
+    payment_amount: 0,
+    reduction: 0
   });
   const [assigningClass, setAssigningClass] = useState(false);
 
@@ -208,23 +212,23 @@ export default function StudentDetails() {
     const st = dossier.student;
     const loadedParents = (dossier.guardians && dossier.guardians.length > 0)
       ? dossier.guardians.map((g, idx) => ({
-          id: g.id || idx + 1,
-          relationship: g.relationship || 'FATHER',
-          name: g.name || '',
-          phone: g.phone || '',
-          email: g.email || '',
-          job: g.job || '',
-          is_primary: Boolean(g.is_primary)
-        }))
+        id: g.id || idx + 1,
+        relationship: g.relationship || 'FATHER',
+        name: g.name || '',
+        phone: g.phone || '',
+        email: g.email || '',
+        job: g.job || '',
+        is_primary: Boolean(g.is_primary)
+      }))
       : [{
-          id: 1,
-          relationship: 'FATHER',
-          name: st.parent_name || '',
-          phone: st.parent_phone || '',
-          email: st.parent_email || '',
-          job: st.parent_job || '',
-          is_primary: true
-        }];
+        id: 1,
+        relationship: 'FATHER',
+        name: st.parent_name || '',
+        phone: st.parent_phone || '',
+        email: st.parent_email || '',
+        job: st.parent_job || '',
+        is_primary: true
+      }];
 
     setEditFormData({
       national_id: st.national_id || '',
@@ -265,7 +269,7 @@ export default function StudentDetails() {
       if (res.success) {
         toast.success(res.message || t('toast.assign_class_success', 'تم إلحاق التلميذ بهذا الفوج بنجاح'));
         setIsAssignModalOpen(false);
-        setAssignFormData({ class_id: '', roll_number: '', remarks: '' });
+        setAssignFormData({ class_id: '', roll_number: '', remarks: '', payment_amount: 0, reduction: 0 });
         fetchStudentDossier();
       }
     } catch (err) {
@@ -305,9 +309,9 @@ export default function StudentDetails() {
     if (confirmed) {
       try {
         setTransferringClass(true);
-        const assignRes = await api.post(`/students/${id}/classes`, { 
-          class_id: transferFormData.to_class_id, 
-          remarks: transferFormData.remarks 
+        const assignRes = await api.post(`/students/${id}/classes`, {
+          class_id: transferFormData.to_class_id,
+          remarks: transferFormData.remarks
         });
         if (assignRes.success) {
           await api.delete(`/students/${id}/classes/${transferFormData.from_class_id}`);
@@ -551,8 +555,8 @@ export default function StudentDetails() {
               />
             ) : (
               <div className={`w-28 h-28 rounded-3xl border-4 border-white shadow-md flex items-center justify-center text-3xl font-black ${student.gender === 'MALE'
-                  ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500/20'
-                  : 'bg-pink-100 text-pink-700 ring-2 ring-pink-500/20'
+                ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500/20'
+                : 'bg-pink-100 text-pink-700 ring-2 ring-pink-500/20'
                 }`}>
                 {student.first_name_ar ? student.first_name_ar.charAt(0) : 'ط'}
               </div>
@@ -601,8 +605,8 @@ export default function StudentDetails() {
                 </span>
               )}
               <span className={`px-3 py-1 rounded-xl font-bold ${student.status === 'ACTIVE'
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
-                  : 'bg-slate-100 text-slate-600'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/50'
+                : 'bg-slate-100 text-slate-600'
                 }`}>
                 {student.status === 'ACTIVE' ? t('students.status_active', 'نشط مداوم') : student.status}
               </span>
@@ -644,8 +648,8 @@ export default function StudentDetails() {
         <button
           onClick={() => setActiveTab('overview')}
           className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'overview'
-              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
         >
           <User className="w-4 h-4" />
@@ -655,8 +659,8 @@ export default function StudentDetails() {
         <button
           onClick={() => setActiveTab('classes')}
           className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'classes'
-              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
         >
           <BookOpen className="w-4 h-4" />
@@ -670,8 +674,8 @@ export default function StudentDetails() {
         <button
           onClick={() => setActiveTab('grades')}
           className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'grades'
-              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
         >
           <Award className="w-4 h-4" />
@@ -685,8 +689,8 @@ export default function StudentDetails() {
         <button
           onClick={() => setActiveTab('attendance')}
           className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'attendance'
-              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
         >
           <Clock className="w-4 h-4" />
@@ -696,8 +700,8 @@ export default function StudentDetails() {
         <button
           onClick={() => setActiveTab('finance')}
           className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'finance'
-              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
-              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+            ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }`}
         >
           <Wallet className="w-4 h-4" />
@@ -708,8 +712,8 @@ export default function StudentDetails() {
           <button
             onClick={() => setActiveTab('milestones')}
             className={`px-4 py-2.5 rounded-2xl transition-all flex items-center gap-2 flex-shrink-0 ${activeTab === 'milestones'
-                ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
-                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+              : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
               }`}
           >
             <Sparkles className="w-4 h-4" />
@@ -858,13 +862,13 @@ export default function StudentDetails() {
               {((dossier.guardians && dossier.guardians.length > 0)
                 ? dossier.guardians
                 : (student.parent_name ? [{
-                    relationship: 'FATHER',
-                    name: student.parent_name,
-                    phone: student.parent_phone,
-                    email: student.parent_email,
-                    job: student.parent_job,
-                    is_primary: 1
-                  }] : [])
+                  relationship: 'FATHER',
+                  name: student.parent_name,
+                  phone: student.parent_phone,
+                  email: student.parent_email,
+                  job: student.parent_job,
+                  is_primary: 1
+                }] : [])
               ).map((guardian, gIdx) => (
                 <div key={guardian.id || gIdx} className="p-3 bg-slate-50/80 border border-slate-200/70 rounded-2xl space-y-2 text-xs">
                   <div className="flex items-center justify-between gap-2 border-b border-slate-200/60 pb-1.5">
@@ -872,8 +876,8 @@ export default function StudentDetails() {
                       <span className="font-bold text-slate-800">
                         {guardian.relationship === 'FATHER' ? t('students.rel_father', 'الأب')
                           : guardian.relationship === 'MOTHER' ? t('students.rel_mother', 'الأم')
-                          : guardian.relationship === 'GUARDIAN' ? t('students.rel_guardian', 'الولي القانوني')
-                          : t('students.rel_other', 'آخر')}
+                            : guardian.relationship === 'GUARDIAN' ? t('students.rel_guardian', 'الولي القانوني')
+                              : t('students.rel_other', 'آخر')}
                       </span>
                       {Boolean(guardian.is_primary) && (
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
@@ -952,7 +956,7 @@ export default function StudentDetails() {
       )}
 
       {/* =========================================================================
-          TAB: ASSIGNED CLASSES / COHORTS (MULTI-CLASS SUPPORT)
+          TAB: ASSIGNED CLASSES / Groups (MULTI-CLASS SUPPORT)
           ========================================================================= */}
       {activeTab === 'classes' && (
         <div className="space-y-6">
@@ -1016,8 +1020,8 @@ export default function StudentDetails() {
                           {ac.track_name_ar || t('tracks.general_track', 'مسار تعليمي')}
                         </span>
                         <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${ac.enrollment_status === 'ACTIVE'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : 'bg-slate-100 text-slate-600'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-slate-100 text-slate-600'
                           }`}>
                           {ac.enrollment_status === 'ACTIVE' ? t('students.enrollment_status_active', 'قيد نشط') : ac.enrollment_status}
                         </span>
@@ -1028,8 +1032,8 @@ export default function StudentDetails() {
                         <div className="w-9 h-9 rounded-xl bg-emerald-100/70 text-emerald-700 flex items-center justify-center flex-shrink-0">
                           <BookOpen className="w-4 h-4" />
                         </div>
-                        <div 
-                          className="cursor-pointer hover:opacity-80 transition-opacity group" 
+                        <div
+                          className="cursor-pointer hover:opacity-80 transition-opacity group"
                           onClick={() => navigate(`/classes/${ac.class_id || ac.id}`)}
                           title={t('students.click_to_view_class', 'انقر لعرض تفاصيل الفوج')}
                         >
@@ -1465,14 +1469,14 @@ export default function StudentDetails() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.col_gender')}</label>
-                <select
+                <CustomSelect
                   value={editFormData.gender}
                   onChange={e => setEditFormData({ ...editFormData, gender: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
                   <option value="MALE">{t('students.gender_male', 'ذكر')}</option>
                   <option value="FEMALE">{t('students.gender_female', 'أنثى')}</option>
-                </select>
+                </CustomSelect>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.birth_date')} *</label>
@@ -1564,7 +1568,7 @@ export default function StudentDetails() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.academic_track')} *</label>
-                <select
+                <CustomSelect
                   required
                   value={editFormData.academic_track_id}
                   onChange={e => setEditFormData({ ...editFormData, academic_track_id: e.target.value })}
@@ -1576,11 +1580,11 @@ export default function StudentDetails() {
                       {isRTL ? tItem.name_ar : (tItem.name_fr || tItem.name_en || tItem.name_ar)}
                     </option>
                   ))}
-                </select>
+                </CustomSelect>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.col_status')}</label>
-                <select
+                <CustomSelect
                   value={editFormData.status}
                   onChange={e => setEditFormData({ ...editFormData, status: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -1590,7 +1594,7 @@ export default function StudentDetails() {
                   <option value="TRANSFERRED">{t('students.status_transferred', 'محول')}</option>
                   <option value="SUSPENDED">{t('students.status_suspended', 'معلق')}</option>
                   <option value="EXPELLED">{t('students.status_expelled', 'مفصول')}</option>
-                </select>
+                </CustomSelect>
               </div>
             </div>
           </div>
@@ -1649,11 +1653,10 @@ export default function StudentDetails() {
               {(editFormData.parents || []).map((parent, idx) => (
                 <div
                   key={parent.id || idx}
-                  className={`p-3.5 rounded-2xl border transition-all ${
-                    parent.is_primary
+                  className={`p-3.5 rounded-2xl border transition-all ${parent.is_primary
                       ? 'bg-emerald-50/40 border-emerald-200/80 ring-1 ring-emerald-500/10'
                       : 'bg-slate-50/70 border-slate-200'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-2.5 pb-2 border-b border-slate-200/60">
                     <div className="flex items-center gap-2">
@@ -1663,8 +1666,8 @@ export default function StudentDetails() {
                       <span className="text-xs font-bold text-slate-800">
                         {parent.relationship === 'FATHER' ? t('students.rel_father', 'الأب')
                           : parent.relationship === 'MOTHER' ? t('students.rel_mother', 'الأم')
-                          : parent.relationship === 'GUARDIAN' ? t('students.rel_guardian', 'الولي القانوني')
-                          : t('students.rel_other', 'آخر')}
+                            : parent.relationship === 'GUARDIAN' ? t('students.rel_guardian', 'الولي القانوني')
+                              : t('students.rel_other', 'آخر')}
                       </span>
                       {parent.is_primary && (
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white shadow-2xs">
@@ -1703,7 +1706,7 @@ export default function StudentDetails() {
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         {t('students.parent_relationship', 'صلة القرابة')}
                       </label>
-                      <select
+                      <CustomSelect
                         value={parent.relationship || 'FATHER'}
                         onChange={e => handleParentChange(idx, 'relationship', e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -1712,7 +1715,7 @@ export default function StudentDetails() {
                         <option value="MOTHER">{t('students.rel_mother', 'الأم')}</option>
                         <option value="GUARDIAN">{t('students.rel_guardian', 'الولي القانوني')}</option>
                         <option value="OTHER">{t('students.rel_other', 'آخر')}</option>
-                      </select>
+                      </CustomSelect>
                     </div>
 
                     <div>
@@ -1791,7 +1794,7 @@ export default function StudentDetails() {
       </Modal>
 
       {/* =========================================================================
-          MODAL: ASSIGN STUDENT TO CLASS / COHORT
+          MODAL: ASSIGN STUDENT TO CLASS / Groups
           ========================================================================= */}
       <Modal
         isOpen={isAssignModalOpen}
@@ -1816,10 +1819,21 @@ export default function StudentDetails() {
             <label className="block text-xs font-bold text-slate-700 mb-1">
               {t('students.select_class_label', 'اختر الفوج *')}
             </label>
-            <select
+            <CustomSelect
               required
+              searchable
               value={assignFormData.class_id}
-              onChange={e => setAssignFormData({ ...assignFormData, class_id: e.target.value })}
+              onChange={e => {
+                const selectedClassId = e.target.value;
+                const selectedClass = classes.find(c => c.id == selectedClassId);
+                const pricingValue = selectedClass?.pricing_value || 0;
+                setAssignFormData({
+                  ...assignFormData,
+                  class_id: selectedClassId,
+                  payment_amount: pricingValue,
+                  reduction: 0
+                });
+              }}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-medium"
             >
               <option value="">{t('students.select_class_placeholder', '-- اختر الفوج --')}</option>
@@ -1831,33 +1845,61 @@ export default function StudentDetails() {
                   </option>
                 );
               })}
-            </select>
+            </CustomSelect>
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              رقم القيد في الفوج (اختياري)
-            </label>
-            <input
-              type="text"
-              value={assignFormData.roll_number}
-              onChange={e => setAssignFormData({ ...assignFormData, roll_number: e.target.value })}
-              placeholder="مثال: 01 أو A-12"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              ملاحظات التسجيل في هذا الفوج (اختياري)
+              {t('students.enrollment_remarks', 'ملاحظات التسجيل في هذا الفوج (اختياري)')}
             </label>
             <textarea
               rows="2"
               value={assignFormData.remarks}
               onChange={e => setAssignFormData({ ...assignFormData, remarks: e.target.value })}
-              placeholder="مثال: فوج تحفيظ القرآن الصباحي / حصص الدعم..."
+              placeholder={t('students.enrollment_remarks_placeholder', 'مثال: فوج تحفيظ القرآن الصباحي / حصص الدعم...')}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
             />
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3 mt-4">
+            <h4 className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Coins className="w-4 h-4 text-emerald-600" />
+              {t('finance.payment_section', 'القسم المالي')}
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  {t('finance.payment_amount', 'مبلغ الدفع')}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={assignFormData.payment_amount}
+                  onChange={e => setAssignFormData({ ...assignFormData, payment_amount: e.target.value })}
+                  className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  {t('finance.reduction', 'التخفيض')}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={assignFormData.reduction}
+                  onChange={e => setAssignFormData({ ...assignFormData, reduction: e.target.value })}
+                  className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+              <span className="text-xs font-bold text-slate-700">{t('finance.total_amount', 'المبلغ الإجمالي')}</span>
+              <span className="text-sm font-bold text-emerald-600">
+                {formatCurrency(Math.max(0, Number(assignFormData.payment_amount || 0) - Number(assignFormData.reduction || 0)), settings.currency)}
+              </span>
+            </div>
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -1866,7 +1908,7 @@ export default function StudentDetails() {
               onClick={() => setIsAssignModalOpen(false)}
               className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
             >
-              إلغاء
+              {t('common.cancel', 'إلغاء')}
             </button>
             <button
               type="submit"
@@ -1874,7 +1916,7 @@ export default function StudentDetails() {
               className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5"
             >
               <Plus className="w-4 h-4" />
-              <span>{assigningClass ? 'جاري الإلحاق...' : 'تأكيد الإلحاق بالفوج'}</span>
+              <span>{assigningClass ? t('students.assigning_class', 'جاري الإلحاق...') : t('students.confirm_assign_class', 'تأكيد الإلحاق بالفوج')}</span>
             </button>
           </div>
         </form>
@@ -1906,7 +1948,7 @@ export default function StudentDetails() {
             <label className="block text-xs font-bold text-slate-700 mb-1">
               {t('students.select_target_class_label', 'اختر الفوج الجديد *')}
             </label>
-            <select
+            <CustomSelect
               required
               value={transferFormData.to_class_id}
               onChange={e => setTransferFormData({ ...transferFormData, to_class_id: e.target.value })}
@@ -1915,15 +1957,13 @@ export default function StudentDetails() {
               <option value="">{t('students.select_target_class_placeholder', '-- اختر الفوج الجديد --')}</option>
               {classes
                 .filter(c => c.id != transferFormData.from_class_id)
-                .map(c => {
-                  const isAlready = assignedClasses?.some(ac => (ac.id || ac.class_id) == c.id);
-                  return (
-                    <option key={c.id} value={c.id} disabled={isAlready}>
-                      {c.name} {c.grade_level ? `(${c.grade_level})` : ''} {c.track_name_ar ? `- ${c.track_name_ar}` : ''} {isAlready ? t('students.class_already_enrolled', ' (مسجل به بالفعل)') : ''}
-                    </option>
-                  );
-              })}
-            </select>
+                .filter(c => !(assignedClasses?.some(ac => (ac.id || ac.class_id) == c.id)))
+                .map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {c.grade_level ? `(${c.grade_level})` : ''} {c.track_name_ar ? `- ${c.track_name_ar}` : ''}
+                  </option>
+                ))}
+            </CustomSelect>
           </div>
 
           <div>

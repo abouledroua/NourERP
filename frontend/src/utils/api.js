@@ -1,7 +1,7 @@
 const API_BASE = "/api";
 
 export function generateDeviceKey() {
-  const chars = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const chars = "23456789ABCDEFGHJKLMNPQRSTWXYZ";
   let result = "";
   for (let i = 0; i < 7; i++) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));

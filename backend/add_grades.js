@@ -1,0 +1,1 @@
+import { query } from './config/db.js'; async function alter() { try { await query('ALTER TABLE teachers ADD COLUMN grades VARCHAR(255) DEFAULT NULL;'); console.log('Done'); } catch (e) { console.error(e); } process.exit(); } alter();

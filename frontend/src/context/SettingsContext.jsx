@@ -7,14 +7,14 @@ const SettingsContext = createContext();
 export function SettingsProvider({ children }) {
   const { token } = useAuth();
   const [settings, setSettings] = useState({
-    school_name_ar: 'مؤسسة ونظام النور الأكاديمي والتربوي',
-    school_name_en: 'Al-Nour Academic & School Institute',
-    school_name_fr: 'Établissement Scolaire & Académique Al-Nour',
-    school_address: 'شارع النهضة والتربية، مجمع النور التعليمي',
-    school_phone: '+213 (0) 550 12 34 56',
-    school_email: 'administration@alnour-school.edu',
+    school_name_ar: '',
+    school_name_en: '',
+    school_name_fr: '',
+    school_address: '',
+    school_phone: '',
+    school_email: '',
     currency: 'DA',
-    tax_number: 'NIF: 099817263544001',
+    tax_number: '',
     print_receipt_footer: '«التربية ركيزتنا والامتياز غايتنا» - شكراً لثقتكم بمؤسستنا'
   });
   const [tracks, setTracks] = useState([]);

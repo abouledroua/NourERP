@@ -264,6 +264,8 @@ CREATE TABLE IF NOT EXISTS student_enrollments (
     class_id INT NOT NULL,
     academic_year_id INT NOT NULL,
     roll_number INT NULL,
+    payment_amount DECIMAL(10,2) DEFAULT 0.00,
+    reduction DECIMAL(10,2) DEFAULT 0.00,
     enrollment_status ENUM('ACTIVE', 'PROMOTED', 'RETAINED', 'TRANSFERRED', 'GRADUATED') DEFAULT 'ACTIVE',
     remarks VARCHAR(255) NULL,
     enrolled_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

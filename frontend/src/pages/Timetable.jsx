@@ -6,6 +6,7 @@ import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import Modal from '../components/Modal';
 import { formatTime } from '../utils/formatters';
 import TimeInput from '../components/TimeInput';
+import CustomSelect from '../components/CustomSelect';
 
 const DAY_KEYS = [
   { id: 0, key: 'day_sunday' },
@@ -190,7 +191,7 @@ export default function Timetable() {
         <span className="text-xs font-bold text-slate-700">
           {viewMode === 'class' ? t('timetable.select_class_label') : t('timetable.select_teacher_label')}
         </span>
-        <select
+        <CustomSelect
           value={selectedId}
           onChange={e => setSelectedId(e.target.value)}
           className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none min-w-[220px]"
@@ -199,7 +200,7 @@ export default function Timetable() {
             ? classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)
             : teachers.map(t => <option key={t.id} value={t.id}>{t.first_name} {t.last_name} ({t.specialty})</option>)
           }
-        </select>
+        </CustomSelect>
       </div>
 
       {/* Weekly Timetable Grid */}
@@ -267,49 +268,49 @@ export default function Timetable() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('timetable.col_class')}</label>
-              <select
+              <CustomSelect
                 required
                 value={slotForm.classId}
                 onChange={e => setSlotForm({ ...slotForm, classId: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               >
                 {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              </CustomSelect>
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('timetable.col_teacher')}</label>
-              <select
+              <CustomSelect
                 required
                 value={slotForm.teacherId}
                 onChange={e => setSlotForm({ ...slotForm, teacherId: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               >
                 {teachers.map(t => <option key={t.id} value={t.id}>{t.first_name} {t.last_name}</option>)}
-              </select>
+              </CustomSelect>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('timetable.col_subject')}</label>
-              <select
+              <CustomSelect
                 required
                 value={slotForm.subjectId}
                 onChange={e => setSlotForm({ ...slotForm, subjectId: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               >
                 {subjects.map(s => <option key={s.id} value={s.id}>{s.name_ar}</option>)}
-              </select>
+              </CustomSelect>
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('timetable.col_day')}</label>
-              <select
+              <CustomSelect
                 value={slotForm.dayOfWeek}
                 onChange={e => setSlotForm({ ...slotForm, dayOfWeek: parseInt(e.target.value, 10) })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               >
                 {days.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-              </select>
+              </CustomSelect>
             </div>
           </div>
 
@@ -336,7 +337,7 @@ export default function Timetable() {
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('timetable.col_room')}</label>
-              <select
+              <CustomSelect
                 value={slotForm.room}
                 onChange={e => setSlotForm({ ...slotForm, room: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -344,7 +345,7 @@ export default function Timetable() {
                 {rooms.map(r => (
                   <option key={r.id} value={r.name}>{r.name} ({r.code || ''})</option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
           </div>
 

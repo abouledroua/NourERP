@@ -28,6 +28,7 @@ import PhotoUpload from '../components/PhotoUpload';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import ArabicInput from '../components/ArabicInput';
 import DateInput from '../components/DateInput';
+import CustomSelect from '../components/CustomSelect';
 
 export default function Students() {
   const navigate = useNavigate();
@@ -46,6 +47,17 @@ export default function Students() {
   const [selectedClass, setSelectedClass] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedDebt, setSelectedDebt] = useState('');
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  const totalPages = Math.max(1, Math.ceil(students.length / itemsPerPage));
+  const paginatedStudents = students.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [students]);
 
   // Modals state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -140,7 +152,7 @@ export default function Students() {
           };
           return { ...prev, parents: updated };
         });
-        toast.info('لا يوجد ولي أمر مسجل بهذا الرقم / No parent found for this NIN');
+        toast.info(t('parents.no_parent_found_by_nin', 'لا يوجد ولي أمر مسجل بهذا الرقم / No parent found for this NIN'));
         return;
       }
 
@@ -152,7 +164,7 @@ export default function Students() {
           ...current,
           nin: normalized,
           relationship: resolveGuardianRelationship(prev.parents || [], index, matchedRelationship),
-          name: current.name?.trim() || (res.data.name && res.data.name !== 'ولي أمر' ? res.data.name : ''),
+          name: current.name?.trim() || (res.data.name && res.data.name !== t('students.guardian_label', 'ولي أمر') ? res.data.name : ''),
           phone: current.phone?.trim() || res.data.phone || '',
           email: current.email?.trim() || res.data.email || '',
           job: current.job?.trim() || res.data.job || '',
@@ -367,7 +379,7 @@ export default function Students() {
     });
 
     if (duplicateNin) {
-      toast.error('لا يمكن أن يتطابق رقم التعريف الوطني لاثنين من الأولياء / Two guardians cannot share the same NIN');
+      toast.error(t('parents.duplicate_nin', 'لا يمكن أن يتطابق رقم التعريف الوطني لاثنين من الأولياء / Two guardians cannot share the same NIN'));
       return;
     }
 
@@ -477,7 +489,7 @@ export default function Students() {
         guardians.forEach((guardian) => {
           if (guardian && (guardian.name || guardian.phone)) {
             parents.push({
-              name: guardian.name || 'ولي أمر',
+              name: guardian.name || t('students.guardian_label', 'ولي أمر'),
               phone: guardian.phone || ''
             });
           }
@@ -489,7 +501,7 @@ export default function Students() {
 
     if (parents.length === 0 && (st.parent_name || st.parent_phone)) {
       parents.push({
-        name: st.parent_name || 'ولي أمر',
+        name: st.parent_name || t('students.guardian_label', 'ولي أمر'),
         phone: st.parent_phone || ''
       });
     }
@@ -512,7 +524,7 @@ export default function Students() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-[96%] 2xl:max-w-[90%] mx-auto">
       {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
@@ -543,9 +555,9 @@ export default function Students() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center gap-3">
+      <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-xs grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 items-center">
         {/* Search */}
-        <div className="relative flex-1 min-w-[240px]">
+        <div className="relative w-full">
           <div className="absolute inset-y-0 right-0 rtl:right-0 ltr:left-0 pr-3.5 rtl:pr-3.5 ltr:pl-3.5 flex items-center pointer-events-none text-slate-400">
             <Search className="w-4 h-4" />
           </div>
@@ -559,52 +571,60 @@ export default function Students() {
         </div>
 
         {/* Track Filter */}
-        <select
-          value={selectedTrack}
-          onChange={(e) => setSelectedTrack(e.target.value)}
-          className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        >
-          <option value="">{t('students.filter_track')}</option>
-          {tracks.map(t => (
-            <option key={t.id} value={t.id}>{t.name_ar}</option>
-          ))}
-        </select>
+        <div className="w-full">
+          <CustomSelect
+            value={selectedTrack}
+            onChange={(e) => setSelectedTrack(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">{t('students.filter_track')}</option>
+            {tracks.map(t => (
+              <option key={t.id} value={t.id}>{t.name_ar}</option>
+            ))}
+          </CustomSelect>
+        </div>
 
         {/* Class Filter */}
-        <select
-          value={selectedClass}
-          onChange={(e) => setSelectedClass(e.target.value)}
-          className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        >
-          <option value="">{t('students.filter_class')}</option>
-          {classes.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+        <div className="w-full">
+          <CustomSelect
+            value={selectedClass}
+            onChange={(e) => setSelectedClass(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">{t('students.filter_class')}</option>
+            {classes.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </CustomSelect>
+        </div>
 
         {/* Status Filter */}
-        <select
-          value={selectedStatus}
-          onChange={(e) => setSelectedStatus(e.target.value)}
-          className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-        >
-          <option value="">{t('students.filter_status')}</option>
-          <option value="ACTIVE">{t('students.status_active', 'نشط مداوم')}</option>
-          <option value="GRADUATED">{t('students.status_graduated', 'متخرج')}</option>
-          <option value="TRANSFERRED">{t('students.status_transferred', 'محول')}</option>
-          <option value="SUSPENDED">{t('students.status_suspended', 'معلق')}</option>
-        </select>
+        <div className="w-full">
+          <CustomSelect
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <option value="">{t('students.filter_status')}</option>
+            <option value="ACTIVE">{t('students.status_active', 'نشط مداوم')}</option>
+            <option value="GRADUATED">{t('students.status_graduated', 'متخرج')}</option>
+            <option value="TRANSFERRED">{t('students.status_transferred', 'محول')}</option>
+            <option value="SUSPENDED">{t('students.status_suspended', 'معلق')}</option>
+          </CustomSelect>
+        </div>
 
         {/* Debt Filter */}
-        <select
-          value={selectedDebt}
-          onChange={(e) => setSelectedDebt(e.target.value)}
-          className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
-        >
-          <option value="">{t('students.filter_debt_all', 'جميع الوضعيات (الديون)')}</option>
-          <option value="DEBT">{t('students.filter_debt_has', 'عليهم ديون مستحقة')}</option>
-          <option value="CLEARED">{t('students.filter_debt_cleared', 'مستوفون (بدون ديون)')}</option>
-        </select>
+        <div className="w-full">
+          <CustomSelect
+            value={selectedDebt}
+            onChange={(e) => setSelectedDebt(e.target.value)}
+            className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-medium"
+          >
+            <option value="">{t('students.filter_debt_all', 'جميع الوضعيات (الديون)')}</option>
+            <option value="DEBT">{t('students.filter_debt_has', 'عليهم ديون مستحقة')}</option>
+            <option value="CLEARED">{t('students.filter_debt_cleared', 'مستوفون (بدون ديون)')}</option>
+          </CustomSelect>
+        </div>
       </div>
 
       {/* Students Data Table */}
@@ -639,7 +659,7 @@ export default function Students() {
                   </td>
                 </tr>
               ) : (
-                students.map((st) => {
+                paginatedStudents.map((st) => {
                   const parentRows = getParentRows(st);
 
                   return (
@@ -661,7 +681,7 @@ export default function Students() {
                           ) : (
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 text-xs font-bold transition-all group-hover:ring-2 group-hover:ring-emerald-500/50 ${st.gender === 'MALE' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'
                               }`}>
-                              {st.first_name_ar ? st.first_name_ar.charAt(0) : 'ط'}
+                              {st.first_name_ar ? st.first_name_ar.charAt(0) : t('students.default_avatar_char', 'ط')}
                             </div>
                           )}
                           <div>
@@ -775,15 +795,14 @@ export default function Students() {
               {t('students.no_results', 'لا يوجد تلاميذ يطابقون شروط البحث')}
             </div>
           ) : (
-            students.map((st) => {
+            paginatedStudents.map((st) => {
               const parentRows = getParentRows(st);
 
               return (
-                <button
+                <div
                   key={st.id}
-                  type="button"
                   onClick={() => navigate(`/students/${st.id}`)}
-                  className="w-full text-left rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm"
+                  className="w-full text-left rounded-2xl border border-slate-200 bg-slate-50 p-3 shadow-sm cursor-pointer hover:bg-slate-100 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -795,7 +814,7 @@ export default function Students() {
                         />
                       ) : (
                         <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${st.gender === 'MALE' ? 'bg-blue-100 text-blue-700' : 'bg-pink-100 text-pink-700'}`}>
-                          {st.first_name_ar ? st.first_name_ar.charAt(0) : 'ط'}
+                          {st.first_name_ar ? st.first_name_ar.charAt(0) : t('students.default_avatar_char', 'ط')}
                         </div>
                       )}
                       <div className="min-w-0">
@@ -881,12 +900,33 @@ export default function Students() {
                       </button>
                     </div>
                   </div>
-                </button>
+                </div>
               );
             })
           )}
         </div>
       </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-center gap-2 mt-6">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold transition-colors"
+          >
+            {t('common.prev', 'السابق / Prev')}
+          </button>
+          <span className="text-xs font-bold text-slate-600 px-2">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold transition-colors"
+          >
+            {t('common.next', 'التالي / Next')}
+          </button>
+        </div>
 
       {/* =========================================================================
           MODAL: ENROLL / EDIT STUDENT
@@ -921,7 +961,7 @@ export default function Students() {
               className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs shadow-emerald-600/30 transition-all flex items-center gap-1.5"
             >
               <Check className="w-3.5 h-3.5" />
-              {isSubmitting ? 'جاري الحفظ...' : editingStudent ? t('common.save_changes', 'تحديث البيانات') : t('common.save', 'حفظ التلميذ')}
+              {isSubmitting ? t('common.saving', 'جاري الحفظ...') : editingStudent ? t('common.save_changes', 'تحديث البيانات') : t('common.save', 'حفظ التلميذ')}
             </button>
           </div>
         }
@@ -996,14 +1036,14 @@ export default function Students() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.col_gender')}</label>
-                <select
+                <CustomSelect
                   value={formData.gender}
                   onChange={e => setFormData({ ...formData, gender: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
                   <option value="MALE">{t('students.gender_male')}</option>
                   <option value="FEMALE">{t('students.gender_female')}</option>
-                </select>
+                </CustomSelect>
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.birth_date')} *</label>
@@ -1101,7 +1141,7 @@ export default function Students() {
                     {t('settings.manage_academic_track', 'Manage Academic Track')}
                   </button>
                 </div>
-                <select
+                <CustomSelect
                   required
                   value={formData.academic_track_id}
                   onChange={e => setFormData({ ...formData, academic_track_id: e.target.value })}
@@ -1113,12 +1153,12 @@ export default function Students() {
                       {isRTL ? tItem.name_ar : (tItem.name_fr || tItem.name_en || tItem.name_ar)}
                     </option>
                   ))}
-                </select>
+                </CustomSelect>
               </div>
               {editingStudent && (
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">{t('students.col_status')}</label>
-                  <select
+                  <CustomSelect
                     value={formData.status}
                     onChange={e => setFormData({ ...formData, status: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -1128,7 +1168,7 @@ export default function Students() {
                     <option value="TRANSFERRED">{t('students.status_transferred', 'محول')}</option>
                     <option value="SUSPENDED">{t('students.status_suspended', 'معلق')}</option>
                     <option value="EXPELLED">{t('students.status_expelled', 'مفصول')}</option>
-                  </select>
+                  </CustomSelect>
                 </div>
               )}
             </div>
@@ -1242,7 +1282,7 @@ export default function Students() {
                       <label className="block text-[11px] font-bold text-slate-700 mb-1">
                         {t('students.parent_relationship', 'صلة القرابة')}
                       </label>
-                      <select
+                      <CustomSelect
                         value={parent.relationship || 'FATHER'}
                         onChange={e => handleParentChange(idx, 'relationship', e.target.value)}
                         className="w-full bg-white border border-slate-200 rounded-xl p-2 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -1251,7 +1291,7 @@ export default function Students() {
                         <option value="MOTHER">{t('students.rel_mother', 'الأم')}</option>
                         <option value="GUARDIAN">{t('students.rel_guardian', 'الولي القانوني')}</option>
                         <option value="OTHER">{t('students.rel_other', 'آخر')}</option>
-                      </select>
+                      </CustomSelect>
                     </div>
 
                     <div>
@@ -1363,7 +1403,7 @@ export default function Students() {
               disabled={isSubmitting}
               className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/30 transition-all"
             >
-              {isSubmitting ? 'جاري الحفظ...' : editingStudent ? t('common.save_changes', 'تحديث البيانات') : t('common.save', 'حفظ التلميذ')}
+              {isSubmitting ? t('common.saving', 'جاري الحفظ...') : editingStudent ? t('common.save_changes', 'تحديث البيانات') : t('common.save', 'حفظ التلميذ')}
             </button>
           </div>
         </form>
@@ -1375,29 +1415,29 @@ export default function Students() {
       <Modal
         isOpen={!!passwordModalData}
         onClose={() => setPasswordModalData(null)}
-        title="معلومات الدخول للأولياء / Guardian Login Credentials"
+        title={t('students.guardian_credentials_title', 'معلومات الدخول للأولياء / Guardian Login Credentials')}
         maxWidth="max-w-md"
         disableOutsideClick={true}
       >
         <div className="p-6 space-y-6">
           <div className="flex flex-col items-center justify-center p-4 bg-emerald-50 rounded-2xl border border-emerald-100 text-emerald-600 mb-4">
             <CheckCircle2 className="w-12 h-12 mb-3" />
-            <h4 className="font-bold text-lg text-center">تم إنشاء حسابات الأولياء بنجاح</h4>
-            <p className="text-sm text-center mt-1">Guardians accounts created successfully</p>
+            <h4 className="font-bold text-lg text-center">{t('students.guardians_created_success', 'تم إنشاء حسابات الأولياء بنجاح')}</h4>
+            <p className="text-sm text-center mt-1">{t('students.guardians_created_success_en', 'Guardians accounts created successfully')}</p>
           </div>
           
           <div className="space-y-4">
             <p className="text-sm text-slate-500 font-medium text-center">
-              يرجى الاحتفاظ بمعلومات الدخول التالية. لن يتم عرض كلمات المرور مرة أخرى.
+              {t('students.guardians_credentials_warning', 'يرجى الاحتفاظ بمعلومات الدخول التالية. لن يتم عرض كلمات المرور مرة أخرى.')}
             </p>
             {passwordModalData && passwordModalData.map((cred, idx) => (
               <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col gap-2">
                 <div className="flex justify-between items-center text-sm font-bold text-slate-700 pb-2 border-b border-slate-200">
-                  <span>{cred.name || 'ولي أمر'}</span>
+                  <span>{cred.name || t('students.guardian_label', 'ولي أمر')}</span>
                   <span className="text-xs font-mono bg-slate-200 px-2 py-1 rounded text-slate-600">{cred.nin}</span>
                 </div>
                 <div className="flex justify-between items-center mt-2">
-                  <span className="text-xs text-slate-500">كلمة المرور (Password):</span>
+                  <span className="text-xs text-slate-500">{t('students.password_label', 'كلمة المرور (Password):')}</span>
                   <span className="font-mono font-bold text-emerald-600 text-lg tracking-widest bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
                     {cred.password}
                   </span>
@@ -1411,7 +1451,7 @@ export default function Students() {
               onClick={() => setPasswordModalData(null)}
               className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md shadow-emerald-600/30 transition-all w-full"
             >
-              تم / Done
+              {t('common.done', 'تم / Done')}
             </button>
           </div>
         </div>

@@ -147,12 +147,16 @@ export async function getClassRoster(req, res) {
         s.birth_date,
         COALESCE((SELECT g.name FROM guardians g JOIN student_guardian_mapping sgm ON g.id = sgm.guardian_id WHERE sgm.student_id = s.id AND sgm.is_primary = 1 ORDER BY g.id LIMIT 1), 'ولي أمر') AS parent_name,
         COALESCE((SELECT g.phone FROM guardians g JOIN student_guardian_mapping sgm ON g.id = sgm.guardian_id WHERE sgm.student_id = s.id AND sgm.is_primary = 1 ORDER BY g.id LIMIT 1), '') AS parent_phone,
-        s.status
+        s.status,
+        se.enrolled_at AS assigned_at,
+        IFNULL((SELECT SUM(remaining_debt) FROM payments WHERE student_id = s.id), 0) +
+        IFNULL((SELECT SUM(remaining_debt) FROM product_sales WHERE student_id = s.id), 0) AS total_debt
       FROM students s
+      LEFT JOIN student_enrollments se ON se.student_id = s.id AND se.class_id = ?
       WHERE s.current_class_id = ?
       ORDER BY s.last_name_ar ASC, s.first_name_ar ASC
     `,
-      [id],
+      [id, id],
     );
 
     res.json({ success: true, data: students });
@@ -176,7 +180,7 @@ export async function createClass(req, res) {
     classroom,
   } = req.body;
   const normalizedPricingType = normalizePricingType(pricing_type);
-  if (!academic_year_id || !academic_track_id || !name || !grade_level) {
+  if (!academic_year_id || !academic_track_id || !name) {
     return res.status(400).json({
       success: false,
       message: "يرجى ملء كافة بيانات القسم الإلزامية / Required fields missing",

@@ -70,8 +70,8 @@ export async function updateGuardian(req, res) {
       "UPDATE guardians SET name = ?, phone = ?, email = ?, job = ? WHERE id = ?",
       [name, phone, email, job, id]
     );
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: {
         en: "Guardian details updated successfully",
         fr: "Détails du tuteur mis à jour avec succès",
@@ -89,8 +89,8 @@ export async function deleteGuardian(req, res) {
   try {
     const [links] = await query("SELECT COUNT(*) as count FROM student_guardian_mapping WHERE guardian_id = ?", [id]);
     if (links.count > 0) {
-      return res.status(400).json({ 
-        success: false, 
+      return res.status(400).json({
+        success: false,
         message: {
           en: "Cannot delete a guardian linked to students. Please remove the student links first.",
           fr: "Impossible de supprimer un tuteur lié à des élèves. Veuillez d'abord supprimer les liens.",
@@ -100,13 +100,13 @@ export async function deleteGuardian(req, res) {
     }
 
     await query("DELETE FROM guardians WHERE id = ?", [id]);
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: {
         en: "Guardian deleted successfully",
         fr: "Tuteur supprimé avec succès",
         ar: "تم حذف الولي بنجاح"
-      } 
+      }
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -119,11 +119,11 @@ export async function resetGuardianPassword(req, res) {
   try {
     const newPassword = generateParentPassword(6);
     const newHash = await bcrypt.hash(newPassword, 10);
-    
+
     await query("UPDATE guardians SET password_hash = ? WHERE id = ?", [newHash, id]);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: {
         en: "Password reset successfully",
         fr: "Mot de passe réinitialisé avec succès",
@@ -142,15 +142,14 @@ export async function getGuardianChildren(req, res) {
   try {
     const children = await query(`
       SELECT 
-        s.id, s.first_name_ar, s.last_name_ar, s.first_name_fr, s.last_name_fr, 
+        s.id, s.first_name_ar, s.last_name_ar, s.first_name_en, s.last_name_en, 
         s.matricule, s.photo_url, s.status, s.gender,
         t.name_ar as track_name,
         c.name as class_name
       FROM students s
       JOIN student_guardian_mapping sgm ON s.id = sgm.student_id
-      LEFT JOIN tracks t ON s.track_id = t.id
-      LEFT JOIN class_students cs ON s.id = cs.student_id
-      LEFT JOIN classrooms c ON cs.class_id = c.id
+      LEFT JOIN academic_tracks t ON s.academic_track_id = t.id
+      LEFT JOIN classes c ON s.current_class_id = c.id
       WHERE sgm.guardian_id = ?
     `, [id]);
     res.json({ success: true, data: children });

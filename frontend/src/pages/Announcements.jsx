@@ -20,6 +20,7 @@ import api from '../utils/api';
 import Modal from '../components/Modal';
 import { formatDate } from '../utils/formatters';
 import DateInput from '../components/DateInput';
+import CustomSelect from '../components/CustomSelect';
 
 export default function Announcements() {
   const { t } = useLanguage();
@@ -203,7 +204,7 @@ export default function Announcements() {
 
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           {/* Target Filter */}
-          <select
+          <CustomSelect
             value={targetFilter}
             onChange={(e) => setTargetFilter(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -213,10 +214,10 @@ export default function Announcements() {
             <option value="TRACK">{t('announcements.target_track', 'مسار محدد')}</option>
             <option value="CLASS">{t('announcements.target_class', 'قسم محدد')}</option>
             <option value="STUDENT">{t('announcements.target_student', 'تلميذ محدد')}</option>
-          </select>
+          </CustomSelect>
 
           {/* Priority Filter */}
-          <select
+          <CustomSelect
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -225,7 +226,7 @@ export default function Announcements() {
             <option value="NORMAL">{t('announcements.priority_normal', 'عادي')}</option>
             <option value="IMPORTANT">{t('announcements.priority_important', 'هام')}</option>
             <option value="URGENT">{t('announcements.priority_urgent', 'عاجل')}</option>
-          </select>
+          </CustomSelect>
         </div>
       </div>
 
@@ -349,7 +350,7 @@ export default function Announcements() {
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 {t('announcements.modal_priority_label', 'درجة الأهمية')}
               </label>
-              <select
+              <CustomSelect
                 value={formData.priority}
                 onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -357,14 +358,14 @@ export default function Announcements() {
                 <option value="NORMAL">{t('announcements.priority_normal', 'عادي')}</option>
                 <option value="IMPORTANT">{t('announcements.priority_important', 'هام')}</option>
                 <option value="URGENT">{t('announcements.priority_urgent', 'عاجل')}</option>
-              </select>
+              </CustomSelect>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 {t('announcements.modal_target_label', 'تحديد الجمهور المستهدف *')}
               </label>
-              <select
+              <CustomSelect
                 value={formData.target_type}
                 onChange={(e) => setFormData({ ...formData, target_type: e.target.value, target_id: '' })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
@@ -373,7 +374,7 @@ export default function Announcements() {
                 <option value="TRACK">{t('announcements.target_track', 'مسار دراسي محدد')}</option>
                 <option value="CLASS">{t('announcements.target_class', 'قسم / فوج دراسي')}</option>
                 <option value="STUDENT">{t('announcements.target_student', 'تلميذ محدد')}</option>
-              </select>
+              </CustomSelect>
             </div>
           </div>
 
@@ -383,7 +384,7 @@ export default function Announcements() {
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 {t('announcements.modal_select_track', 'اختر المسار الدراسي')}
               </label>
-              <select
+              <CustomSelect
                 required
                 value={formData.target_id}
                 onChange={(e) => setFormData({ ...formData, target_id: e.target.value })}
@@ -393,7 +394,7 @@ export default function Announcements() {
                 {tracks.map((tr) => (
                   <option key={tr.id} value={tr.id}>{tr.name_ar}</option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
           )}
 
@@ -402,7 +403,7 @@ export default function Announcements() {
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 {t('announcements.modal_select_class', 'اختر القسم / الفوج')}
               </label>
-              <select
+              <CustomSelect
                 required
                 value={formData.target_id}
                 onChange={(e) => setFormData({ ...formData, target_id: e.target.value })}
@@ -412,7 +413,7 @@ export default function Announcements() {
                 {classes.map((cls) => (
                   <option key={cls.id} value={cls.id}>{cls.name} ({cls.grade_level})</option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
           )}
 
@@ -421,7 +422,7 @@ export default function Announcements() {
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 {t('announcements.modal_select_student', 'اختر التلميذ')}
               </label>
-              <select
+              <CustomSelect
                 required
                 value={formData.target_id}
                 onChange={(e) => setFormData({ ...formData, target_id: e.target.value })}
@@ -433,7 +434,7 @@ export default function Announcements() {
                     {st.first_name_ar} {st.last_name_ar} ({st.matricule})
                   </option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
           )}
 

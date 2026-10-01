@@ -4,6 +4,7 @@ import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useToast } from '../context/UIFeedbackContext';
 import DateInput from '../components/DateInput';
+import CustomSelect from '../components/CustomSelect';
 
 export default function Attendance() {
   const { t } = useLanguage();
@@ -126,13 +127,13 @@ export default function Attendance() {
       <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center gap-4 text-xs">
         <div>
           <label className="block font-bold text-slate-500 mb-1">{t('attendance.select_class')}</label>
-          <select
+          <CustomSelect
             value={selectedClassId}
             onChange={e => setSelectedClassId(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none min-w-[200px]"
           >
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          </CustomSelect>
         </div>
 
         <div>

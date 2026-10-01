@@ -57,7 +57,7 @@ async function createOrUpdateGuardian(
 
     if (existingGuardian) {
       guardianId = existingGuardian.id;
-      
+
       // If the existing guardian doesn't have a password, and we generated one, save it.
       if (!existingGuardian.password_hash && generatedPassword) {
         passwordHash = await bcrypt.hash(generatedPassword, 10);
@@ -65,7 +65,7 @@ async function createOrUpdateGuardian(
       } else {
         passwordHash = existingGuardian.password_hash;
       }
-      
+
       // Update guardian profile
       await query(
         `UPDATE guardians SET name = ?, phone = ?, email = ?, job = ?, password_hash = ? WHERE id = ?`,
@@ -250,7 +250,7 @@ export async function getStudentDossier(req, res) {
 
     const guardians = guardiansRaw.length > 0 ? guardiansRaw : [];
 
-    // 2. Assigned Classes / Cohorts (Multi-class enrollment)
+    // 2. Assigned Classes / Groups (Multi-class enrollment)
     const assignedClasses = await query(
       `
       SELECT 
@@ -513,7 +513,7 @@ export async function createStudent(req, res) {
     if (validParents.length > 0) {
       for (const [index, p] of validParents.entries()) {
         const normalizedNin = normalizeGuardianNin(p.nin);
-        
+
         let generatedPassword = p.generatedPassword || p.password || "";
         if (!generatedPassword && normalizedNin) {
           generatedPassword = generateGuardianPassword();
@@ -608,7 +608,7 @@ export async function updateStudent(req, res) {
       if (validParents.length > 0) {
         for (const [index, p] of validParents.entries()) {
           const normalizedNin = normalizeGuardianNin(p.nin);
-          
+
           let generatedPassword = p.generatedPassword || p.password || "";
           if (!generatedPassword && normalizedNin) {
             generatedPassword = generateGuardianPassword();
@@ -784,7 +784,7 @@ export async function exportStudentsExcel(req, res) {
 
 export async function assignStudentToClass(req, res) {
   const { id } = req.params;
-  const { class_id, roll_number, remarks } = req.body;
+  const { class_id, roll_number, remarks, payment_amount, reduction } = req.body;
 
   if (!class_id) {
     return res.status(400).json({
@@ -806,11 +806,13 @@ export async function assignStudentToClass(req, res) {
 
     await query(
       `
-      INSERT INTO student_enrollments (student_id, class_id, academic_year_id, roll_number, remarks, enrollment_status)
-      VALUES (?, ?, ?, ?, ?, 'ACTIVE')
+      INSERT INTO student_enrollments (student_id, class_id, academic_year_id, roll_number, remarks, payment_amount, reduction, enrollment_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE')
       ON DUPLICATE KEY UPDATE 
         enrollment_status = 'ACTIVE', 
         roll_number = COALESCE(VALUES(roll_number), roll_number),
+        payment_amount = COALESCE(VALUES(payment_amount), payment_amount),
+        reduction = COALESCE(VALUES(reduction), reduction),
         remarks = COALESCE(VALUES(remarks), remarks)
     `,
       [
@@ -819,6 +821,8 @@ export async function assignStudentToClass(req, res) {
         cls.academic_year_id,
         roll_number || null,
         remarks || null,
+        payment_amount || 0.00,
+        reduction || 0.00
       ],
     );
 

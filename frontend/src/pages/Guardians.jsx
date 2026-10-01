@@ -5,11 +5,13 @@ import Modal from '../components/Modal';
 import { 
   Users, Search, Edit2, Trash2, KeyRound, AlertCircle, Phone, Mail, CheckCircle2, FileText, Briefcase, User
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 
 export default function Guardians() {
   const { t, isRTL, lang } = useLanguage();
   const toast = useToast();
+  const navigate = useNavigate();
   const [guardians, setGuardians] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -187,6 +189,17 @@ export default function Guardians() {
     (g.phone && g.phone.includes(searchTerm))
   );
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
+
+  const totalPages = Math.max(1, Math.ceil(filteredGuardians.length / itemsPerPage));
+  const paginatedGuardians = filteredGuardians.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, guardians]);
+
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -244,7 +257,7 @@ export default function Guardians() {
                   <td colSpan="5" className="px-6 py-8 text-center text-slate-500">{t('guardians.no_guardians', 'لا يوجد أولياء')}</td>
                 </tr>
               ) : (
-                filteredGuardians.map(guardian => (
+                paginatedGuardians.map(guardian => (
                   <tr 
                     key={guardian.id} 
                     onClick={() => {
@@ -340,6 +353,27 @@ export default function Guardians() {
           </table>
         </div>
       </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-center gap-2 mt-6">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold transition-colors"
+          >
+            {t('common.prev', 'السابق / Prev')}
+          </button>
+          <span className="text-xs font-bold text-slate-600 px-2">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold transition-colors"
+          >
+            {t('common.next', 'التالي / Next')}
+          </button>
+        </div>
 
       {/* Add Modal */}
       <Modal
@@ -721,7 +755,11 @@ export default function Guardians() {
           ) : (
             <div className="space-y-4">
               {guardianChildren.map(child => (
-                <div key={child.id} className="flex items-center gap-4 p-4 border border-slate-200 rounded-xl">
+                <div 
+                  key={child.id} 
+                  onClick={() => navigate(`/students/${child.id}`)}
+                  className="flex items-center gap-4 p-4 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors"
+                >
                   {child.photo_url ? (
                     <img src={child.photo_url} alt={child.first_name_ar} className="w-12 h-12 rounded-full object-cover" />
                   ) : (

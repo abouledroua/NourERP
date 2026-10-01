@@ -34,7 +34,7 @@ export async function listTeachers(req, res) {
 }
 
 export async function createTeacher(req, res) {
-  const { national_id, first_name, last_name, gender, email, phone, specialty, qualification, hire_date, monthly_salary, hourly_rate, payment_type, status, photo_url } = req.body;
+  const { national_id, first_name, last_name, gender, email, phone, specialty, qualification, hire_date, monthly_salary, hourly_rate, payment_type, status, photo_url, grades } = req.body;
   if (!first_name || !last_name) {
     return res.status(400).json({ success: false, message: 'الاسم واللقب مطلوبان / First name and last name required' });
   }
@@ -44,12 +44,12 @@ export async function createTeacher(req, res) {
     const code = `TEA-${(maxRow.max_id + 1).toString().padStart(3, '0')}`;
 
     const result = await query(`
-      INSERT INTO teachers (employee_code, national_id, first_name, last_name, gender, email, phone, specialty, qualification, hire_date, monthly_salary, hourly_rate, payment_type, status, photo_url)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO teachers (employee_code, national_id, first_name, last_name, gender, email, phone, specialty, qualification, hire_date, monthly_salary, hourly_rate, payment_type, status, photo_url, grades)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       code, national_id || null, first_name, last_name, gender || 'MALE', email || null,
       phone || null, specialty || null, qualification || null, hire_date || new Date(),
-      monthly_salary || 0.00, hourly_rate || 0.00, payment_type || 'MONTHLY', status || 'ACTIVE', photo_url || null
+      monthly_salary || 0.00, hourly_rate || 0.00, payment_type || 'MONTHLY', status || 'ACTIVE', photo_url || null, grades || null
     ]);
 
     await logAudit(req.user?.id, req.deviceId, req.workstationName, 'CREATE', 'teachers', result.insertId, { code, first_name, last_name }, req.ip);
@@ -66,7 +66,7 @@ export async function updateTeacher(req, res) {
   try {
     const cols = [];
     const vals = [];
-    const allowed = ['national_id', 'first_name', 'last_name', 'gender', 'email', 'phone', 'specialty', 'qualification', 'hire_date', 'monthly_salary', 'hourly_rate', 'payment_type', 'status', 'photo_url'];
+    const allowed = ['national_id', 'first_name', 'last_name', 'gender', 'email', 'phone', 'specialty', 'qualification', 'hire_date', 'monthly_salary', 'hourly_rate', 'payment_type', 'status', 'photo_url', 'grades'];
 
     for (const key of allowed) {
       if (fields[key] !== undefined) {

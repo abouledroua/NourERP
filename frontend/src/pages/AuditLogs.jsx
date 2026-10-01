@@ -4,6 +4,7 @@ import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { formatDate, formatDateTime } from '../utils/formatters';
 import Modal from '../components/Modal';
+import CustomSelect from '../components/CustomSelect';
 
 export default function AuditLogs() {
   const { t } = useLanguage();
@@ -64,7 +65,7 @@ export default function AuditLogs() {
           />
         </div>
 
-        <select
+        <CustomSelect
           value={actionFilter}
           onChange={e => setActionFilter(e.target.value)}
           className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500"
@@ -77,7 +78,7 @@ export default function AuditLogs() {
           <option value="SETTLE_DEBT">{t('audit.action_settle')}</option>
           <option value="LOGIN">{t('audit.action_login')}</option>
           <option value="BACKUP">{t('audit.action_backup')}</option>
-        </select>
+        </CustomSelect>
       </div>
 
       {/* Logs Table */}

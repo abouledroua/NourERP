@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 export default function Modal({ isOpen, onClose, title, children, maxWidth = 'max-w-2xl', headerActions = null, disableOutsideClick = false }) {
@@ -29,8 +30,8 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
 
   if (!isRendered) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] overflow-y-auto flex items-center justify-center p-4">
       {/* Backdrop */}
       <div 
         className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300 ${isVisible ? 'opacity-100' : 'opacity-0'}`} 
@@ -61,4 +62,6 @@ export default function Modal({ isOpen, onClose, title, children, maxWidth = 'ma
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

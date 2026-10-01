@@ -19,6 +19,7 @@ import { useSettings } from '../context/SettingsContext';
 import { formatCurrency } from '../utils/formatters';
 import Modal from '../components/Modal';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
+import CustomSelect from '../components/CustomSelect';
 
 export default function InventoryPOS() {
   const { t } = useLanguage();
@@ -238,7 +239,7 @@ export default function InventoryPOS() {
               />
             </div>
 
-            <select
+            <CustomSelect
               value={categoryFilter}
               onChange={e => setCategoryFilter(e.target.value)}
               className="bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs font-bold text-slate-700 focus:ring-2 focus:ring-emerald-500"
@@ -248,7 +249,7 @@ export default function InventoryPOS() {
               <option value="UNIFORM">{t('inventory.category_uniform')}</option>
               <option value="SUPPLIES">{t('inventory.category_supplies')}</option>
               <option value="OTHER">{t('inventory.category_other')}</option>
-            </select>
+            </CustomSelect>
 
             <button
               onClick={() => setLowStockOnly(!lowStockOnly)}
@@ -375,7 +376,7 @@ export default function InventoryPOS() {
                 <label className="block text-[11px] font-bold text-slate-600 mb-1">
                   {t('inventory.select_student')}:
                 </label>
-                <select
+                <CustomSelect
                   value={selectedStudentId}
                   onChange={e => setSelectedStudentId(e.target.value)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -386,7 +387,7 @@ export default function InventoryPOS() {
                       {s.first_name_ar} {s.last_name_ar} ({s.matricule}) - {s.class_name}
                     </option>
                   ))}
-                </select>
+                </CustomSelect>
               </div>
 
               {/* Discount and Payment inputs */}
@@ -465,7 +466,7 @@ export default function InventoryPOS() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('inventory.category_label')}</label>
-              <select
+              <CustomSelect
                 value={newProduct.category}
                 onChange={e => setNewProduct({ ...newProduct, category: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-bold"
@@ -474,7 +475,7 @@ export default function InventoryPOS() {
                 <option value="UNIFORM">{t('inventory.category_uniform_long')}</option>
                 <option value="SUPPLIES">{t('inventory.category_supplies_long')}</option>
                 <option value="OTHER">{t('inventory.category_other')}</option>
-              </select>
+              </CustomSelect>
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('inventory.barcode_label')}</label>

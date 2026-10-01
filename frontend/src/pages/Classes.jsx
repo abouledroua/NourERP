@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Plus, Shuffle, ArrowRight, CheckCircle2, UserCheck, Shield, School, Eye, Trash2, DoorOpen } from 'lucide-react';
+import { Users, Plus, Shuffle, ArrowRight, CheckCircle2, UserCheck, Shield, School, Eye, Trash2, DoorOpen, Edit, Search } from 'lucide-react';
 import api from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import Modal from '../components/Modal';
 import RoomsManager from '../components/RoomsManager';
+import Teachers from './Teachers';
 import TimeInput from '../components/TimeInput';
+import CustomSelect from '../components/CustomSelect';
 
 const DAY_OPTIONS = [6, 0, 1, 2, 3, 4, 5];
 
@@ -17,13 +19,14 @@ const createDefaultDaySchedule = () => Object.fromEntries(
     {
       enabled: day !== 5,
       start: '08:00',
-      end: '09:00'
+      end: '16:00',
+      room: ''
     }
   ])
 );
 
 const PRICING_PRESETS = {
-  MONTH_BASED: 5000,
+  MONTH_BASED: 2000,
   SESSION_BASED: 1500,
   HOUR_BASED: 500,
 };
@@ -49,7 +52,10 @@ const getPricingPreset = (pricingType) => PRICING_PRESETS[normalizePricingType(p
 
 const serializeDaySchedule = (scheduleMap, t) => Object.entries(scheduleMap)
   .filter(([, config]) => config?.enabled && config?.start && config?.end)
-  .map(([day, config]) => `${t(`timetable.days.${day}`)} ${config.start} - ${config.end}`)
+  .map(([day, config]) => {
+    const roomPart = config.room ? ` (${config.room})` : '';
+    return `${t(`timetable.days.${day}`)} ${config.start} - ${config.end}${roomPart}`;
+  })
   .join(' | ');
 
 const getClassStatusLabels = (status, t) => {
@@ -77,6 +83,7 @@ const getNextStatus = (currentStatus, targetStatus) => {
   return null;
 };
 
+
 export default function Classes() {
   const { t, isRTL } = useLanguage();
   const { tracks, activeYear } = useSettings();
@@ -93,6 +100,9 @@ export default function Classes() {
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRoomsModalOpen, setIsRoomsModalOpen] = useState(false);
+  const [isTeachersModalOpen, setIsTeachersModalOpen] = useState(false);
+  const [isTeacherDropdownOpen, setIsTeacherDropdownOpen] = useState(false);
+  const [activeRoomDropdown, setActiveRoomDropdown] = useState(null);
   const [rooms, setRooms] = useState([]);
   const [addModalSeed, setAddModalSeed] = useState(0);
   const classNameRef = useRef(null);
@@ -114,10 +124,38 @@ export default function Classes() {
   const [rolloverAction, setRolloverAction] = useState('PROMOTE'); // PROMOTE | RETAIN | GRADUATE
   const [targetClassId, setTargetClassId] = useState('');
 
+  // List Filter & Pagination
+  const [listSearch, setListSearch] = useState('');
+  const [gradeFilter, setGradeFilter] = useState('');
+  const [teacherFilter, setTeacherFilter] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 12;
+
+  const filteredClasses = classes.filter(cls => {
+      if (gradeFilter && cls.grade_level !== gradeFilter) return false;
+      const teacherName = cls.homeroom_teacher_name || '';
+      if (teacherFilter && teacherName !== teacherFilter) return false;
+      if (!listSearch) return true;
+      const q = listSearch.toLowerCase();
+      return (
+        cls.name?.toLowerCase().includes(q) ||
+        cls.track_name_ar?.toLowerCase().includes(q) ||
+        cls.grade_level?.toLowerCase().includes(q) ||
+        teacherName.toLowerCase().includes(q)
+      );
+    });
+  const totalPages = Math.max(1, Math.ceil(filteredClasses.length / itemsPerPage));
+  const paginatedClasses = filteredClasses.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  useEffect(() => {
+      setCurrentPage(1);
+    }, [listSearch, gradeFilter, teacherFilter]);
+
   const getEmptyClassForm = () => ({
     name: '',
     academic_track_id: tracks[0]?.id || '',
-    grade_level: 1,
+    grade_level: '',
+    section: '',
     capacity: 30,
     room_number: '',
     homeroom_teacher_id: '',
@@ -136,6 +174,20 @@ export default function Classes() {
     setDaySchedule(createDefaultDaySchedule());
     setNewClass(getEmptyClassForm());
   };
+
+  useEffect(() => {
+    const track = tracks.find(t => String(t.id) === String(newClass.academic_track_id));
+    const trackName = track ? (isRTL ? track.name_ar : (track.name_fr || track.name_en || track.name_ar)) : '';
+
+    const parts = [trackName];
+    if (newClass.grade_level) parts.push(newClass.grade_level);
+    if (newClass.section) parts.push(newClass.section);
+
+    const generated = parts.filter(Boolean).join(' - ');
+    if (generated && generated !== newClass.name) {
+      setNewClass(prev => ({ ...prev, name: generated }));
+    }
+  }, [newClass.academic_track_id, newClass.grade_level, newClass.section, tracks, isRTL]);
 
   const openAddModal = () => {
     setAddModalSeed((prev) => prev + 1);
@@ -225,6 +277,12 @@ export default function Classes() {
   const handleCreateClass = async (e) => {
     e.preventDefault();
     try {
+      const hasEmptyRoom = Object.values(daySchedule).some(config => config?.enabled && !config.room?.trim());
+      if (hasEmptyRoom) {
+        toast.warning(t('classes.validation_room_empty', 'الرجاء تحديد قاعة لكل يوم دراسي / Please assign a room for all active days.'));
+        return;
+      }
+
       const scheduleText = serializeDaySchedule(daySchedule, t);
       const res = await api.post('/classes', {
         ...newClass,
@@ -372,8 +430,48 @@ export default function Classes() {
         </div>
       </div>
 
+      {/* Filter and Search Bar */}
+        <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-xs grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="relative">
+            <div className="absolute inset-y-0 right-0 rtl:right-0 ltr:left-0 pr-3.5 rtl:pr-3.5 ltr:pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <Search className="w-4 h-4" />
+            </div>
+            <input
+              type="text"
+              value={listSearch}
+              onChange={(e) => setListSearch(e.target.value)}
+              placeholder={t('classes.search_placeholder', 'بحث بالاسم، المستوى، الأستاذ... / Search...')}
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 rtl:pr-10 ltr:pl-10 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all"
+            />
+          </div>
+          <div className="min-w-[150px]">
+            <CustomSelect
+              value={gradeFilter}
+              onChange={e => setGradeFilter(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            >
+              <option value="">{t('common.all_grades', 'كل المستويات')}</option>
+              {[...new Set(classes.map(c => c.grade_level).filter(Boolean))].sort().map(g => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </CustomSelect>
+          </div>
+          <div className="min-w-[150px]">
+            <CustomSelect
+              value={teacherFilter}
+              onChange={e => setTeacherFilter(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-2 px-3 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+            >
+              <option value="">{t('common.all_teachers', 'كل الأساتذة')}</option>
+              {teachers.map(tItem => (
+                <option key={tItem.id} value={tItem.first_name + ' ' + tItem.last_name}>{tItem.first_name} {tItem.last_name}</option>
+              ))}
+            </CustomSelect>
+          </div>
+        </div>
+
       {/* Class Cards Grid */}
-      {classes.length === 0 ? (
+      {filteredClasses.length === 0 ? (
         <div className="bg-white border border-dashed border-slate-300 rounded-3xl p-10 text-center shadow-xs">
           <div className="text-slate-400 mb-2">
             <School className="w-10 h-10 mx-auto" />
@@ -387,7 +485,7 @@ export default function Classes() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {classes.map((cls) => {
+          {paginatedClasses.map((cls) => {
             const occupancy = cls.capacity > 0 ? Math.min(100, Math.round((cls.enrolled_students_count / cls.capacity) * 100)) : 0;
             return (
               <div key={cls.id} className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between space-y-4">
@@ -396,12 +494,11 @@ export default function Classes() {
                     <span className="px-2.5 py-0.5 rounded-lg text-[10px] font-black bg-slate-100 text-slate-700">
                       {cls.track_name_ar}
                     </span>
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${
-                      cls.status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${cls.status === 'PENDING' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                       cls.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                      cls.status === 'STOPPED' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                      'bg-slate-100 text-slate-700 border-slate-200'
-                    }`}>
+                        cls.status === 'STOPPED' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                          'bg-slate-100 text-slate-700 border-slate-200'
+                      }`}>
                       {getClassStatusLabels(cls.status, t)}
                     </span>
                   </div>
@@ -412,7 +509,7 @@ export default function Classes() {
                     </Link>
                   </h3>
                   <p className="text-xs text-slate-500">
-                    {t('classes.grade_level_label')}: <strong className="text-slate-700">{cls.grade_level}</strong> | {t('classes.section_label')}: <strong className="text-slate-700">{cls.section}</strong>
+                    {t('classes.grade_level_label')}: <strong className="text-slate-700">{cls.grade_level}</strong> | {t('classes.section_label', 'Group N°')}: <strong className="text-slate-700">{cls.section}</strong>
                   </p>
                 </div>
 
@@ -426,9 +523,8 @@ export default function Classes() {
                   </div>
                   <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                     <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        occupancy >= 90 ? 'bg-rose-500' : (occupancy >= 70 ? 'bg-amber-500' : 'bg-emerald-500')
-                      }`}
+                      className={`h-full rounded-full transition-all duration-500 ${occupancy >= 90 ? 'bg-rose-500' : (occupancy >= 70 ? 'bg-amber-500' : 'bg-emerald-500')
+                        }`}
                       style={{ width: `${occupancy}%` }}
                     />
                   </div>
@@ -480,6 +576,13 @@ export default function Classes() {
                       </>
                     )}
 
+                    <Link
+                      to={`/classes/${cls.id}`}
+                      title={t('common.edit', 'Edit')}
+                      className="p-1.5 rounded-xl text-xs font-bold border bg-slate-50 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 border-slate-200 transition-colors"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                    </Link>
                     <button
                       onClick={() => handleDeleteClass(cls)}
                       title={t('classes.delete_class')}
@@ -498,6 +601,27 @@ export default function Classes() {
         </div>
       )}
 
+      {/* Pagination */}
+      <div className="flex items-center justify-center gap-2 mt-6">
+          <button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold transition-colors"
+          >
+            {t('common.prev', 'السابق / Prev')}
+          </button>
+          <span className="text-xs font-bold text-slate-600 px-2">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold transition-colors"
+          >
+            {t('common.next', 'التالي / Next')}
+          </button>
+        </div>
+
       {/* =========================================================================
           MODAL: CREATE NEW CLASS
           ========================================================================= */}
@@ -505,42 +629,55 @@ export default function Classes() {
         isOpen={isAddModalOpen}
         onClose={closeAddModal}
         title={t('classes.modal_add_title')}
-        maxWidth="max-w-xl"
+        maxWidth="max-w-2xl"
+        disableOutsideClick={true}
+        headerActions={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsAddModalOpen(false)}
+              className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition-colors"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              form="add-class-form"
+              className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/30 transition-all"
+            >
+              {t('common.save')}
+            </button>
+          </div>
+        }
       >
-        <form key={addModalSeed} onSubmit={handleCreateClass} className="space-y-4 text-xs">
+        <form id="add-class-form" key={addModalSeed} onSubmit={handleCreateClass} className="space-y-4 text-xs pb-32">
           <div>
             <label className="block font-bold text-slate-700 mb-1">{t('classes.class_name')} *</label>
             <input
               ref={classNameRef}
-              autoFocus
               type="text"
+              readOnly
               required
               value={newClass.name}
-              onChange={e => setNewClass({ ...newClass, name: e.target.value })}
               placeholder={t('classes.class_name_placeholder')}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-500 focus:outline-none cursor-not-allowed font-bold"
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('classes.academic_track')} *</label>
-              <select
-                required
+              <CustomSelect
                 value={newClass.academic_track_id}
                 onChange={e => setNewClass({ ...newClass, academic_track_id: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              >
-                {tracks.map(tr => (
-                  <option key={tr.id} value={tr.id}>{isRTL ? tr.name_ar : (tr.name_fr || tr.name_en || tr.name_ar)}</option>
-                ))}
-              </select>
+                options={tracks.map(tr => ({ value: tr.id, label: isRTL ? tr.name_ar : (tr.name_fr || tr.name_en || tr.name_ar) }))}
+                placeholder={t('classes.academic_track')}
+              />
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('classes.grade_level')} *</label>
+              <label className="block font-bold text-slate-700 mb-1">{t('classes.grade_level')}</label>
               <input
                 type="text"
-                required
                 value={newClass.grade_level}
                 onChange={e => setNewClass({ ...newClass, grade_level: e.target.value })}
                 placeholder={t('classes.grade_level_placeholder')}
@@ -551,6 +688,17 @@ export default function Classes() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('classes.section_label', 'Group N°')} *</label>
+              <input
+                type="text"
+                required
+                value={newClass.section}
+                onChange={e => setNewClass({ ...newClass, section: e.target.value })}
+                placeholder={t('classes.section_placeholder', 'E.g., A, 1, 101')}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div>
               <label className="block font-bold text-slate-700 mb-1">{t('classes.max_capacity')}</label>
               <input
                 type="number"
@@ -559,95 +707,121 @@ export default function Classes() {
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block font-bold text-slate-700">{t('classes.room_name')}</label>
-                <button
-                  type="button"
-                  onClick={() => setIsRoomsModalOpen(true)}
-                  className="text-[10px] text-emerald-600 hover:underline font-bold"
-                >
-                  + {t('classes.manage_rooms_btn')}
-                </button>
-              </div>
-              <input
-                type="text"
-                list="room-search-options"
-                value={roomSearch}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setRoomSearch(value);
-
-                  const selectedRoom = rooms.find((room) => {
-                    const roomLabel = `${room.name}${room.building ? ` - ${room.building}` : ''}`.trim().toLowerCase();
-                    return room.name.toLowerCase() === value.trim().toLowerCase() || roomLabel === value.trim().toLowerCase();
-                  });
-
-                  setNewClass({
-                    ...newClass,
-                    classroom: selectedRoom ? selectedRoom.name : value
-                  });
-                }}
-                placeholder={t('classes.room_placeholder')}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              />
-              <datalist id="room-search-options">
-                {rooms.map((r) => (
-                  <option key={r.id} value={`${r.name}${r.building ? ` - ${r.building}` : ''}`} />
-                ))}
-              </datalist>
-            </div>
           </div>
 
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="block font-bold text-slate-700">{t('classes.homeroom_teacher')}</label>
-              <Link to="/teachers" className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline">
+              <button type="button" onClick={() => setIsTeachersModalOpen(true)} className="text-[10px] font-bold text-blue-600 hover:text-blue-700 hover:underline">
                 {t('settings.manage_teachers', 'Manage Teachers')}
-              </Link>
+              </button>
             </div>
-            <input
-              type="text"
-              list="teacher-search-options"
-              value={teacherSearch}
-              onChange={(e) => {
-                const value = e.target.value;
-                setTeacherSearch(value);
+            <div className="relative">
+              <div className="flex items-center gap-2">
+                {newClass.homeroom_teacher_id && teachers.find(t => String(t.id) === String(newClass.homeroom_teacher_id))?.photo_url ? (
+                  <img
+                    src={teachers.find(t => String(t.id) === String(newClass.homeroom_teacher_id)).photo_url}
+                    alt="Teacher"
+                    className="w-10 h-10 rounded-full object-cover border border-slate-200 shadow-sm"
+                  />
+                ) : newClass.homeroom_teacher_id ? (
+                  <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200 shadow-sm">
+                    <UserCheck className="w-5 h-5 text-slate-400" />
+                  </div>
+                ) : null}
+                <input
+                  type="text"
+                  value={teacherSearch}
+                  onFocus={() => setIsTeacherDropdownOpen(true)}
+                  onBlur={() => setTimeout(() => setIsTeacherDropdownOpen(false), 200)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setTeacherSearch(value);
+                    setIsTeacherDropdownOpen(true);
 
-                const selectedTeacher = teachers.find((teacher) => {
-                  const fullName = `${teacher.first_name} ${teacher.last_name}`.trim().toLowerCase();
-                  const reversedName = `${teacher.last_name} ${teacher.first_name}`.trim().toLowerCase();
-                  return fullName === value.trim().toLowerCase() || reversedName === value.trim().toLowerCase();
-                });
+                    const selectedTeacher = teachers.find((teacher) => {
+                      const fullName = `${teacher.first_name} ${teacher.last_name}`.trim().toLowerCase();
+                      const reversedName = `${teacher.last_name} ${teacher.first_name}`.trim().toLowerCase();
+                      return fullName === value.trim().toLowerCase() || reversedName === value.trim().toLowerCase();
+                    });
 
-                setNewClass({
-                  ...newClass,
-                  homeroom_teacher_id: selectedTeacher ? String(selectedTeacher.id) : ''
-                });
-              }}
-              placeholder={t('classes.select_teacher')}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            />
-            <datalist id="teacher-search-options">
-              {teachers.map((tea) => (
-                <option key={tea.id} value={`${tea.first_name} ${tea.last_name} (${tea.specialty || ''})`} />
-              ))}
-            </datalist>
+                    setNewClass({
+                      ...newClass,
+                      homeroom_teacher_id: selectedTeacher ? String(selectedTeacher.id) : ''
+                    });
+                  }}
+                  placeholder={t('classes.select_teacher')}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              {isTeacherDropdownOpen && (
+                <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                  {teachers
+                    .filter((tea) => {
+                      if (!teacherSearch) return true;
+                      const searchLower = teacherSearch.toLowerCase();
+                      const fullName = `${tea.first_name} ${tea.last_name}`.toLowerCase();
+                      const reversedName = `${tea.last_name} ${tea.first_name}`.toLowerCase();
+                      return fullName.includes(searchLower) || reversedName.includes(searchLower);
+                    })
+                    .map((tea) => (
+                      <div
+                        key={tea.id}
+                        onClick={() => {
+                          setTeacherSearch(`${tea.first_name} ${tea.last_name}`);
+                          setNewClass({
+                            ...newClass,
+                            homeroom_teacher_id: String(tea.id)
+                          });
+                          setIsTeacherDropdownOpen(false);
+                        }}
+                        className="flex items-center gap-3 p-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0"
+                      >
+                        {tea.photo_url ? (
+                          <img src={tea.photo_url} alt="" className="w-8 h-8 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                            <UserCheck className="w-4 h-4 text-slate-400" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="text-sm font-bold text-slate-700">{tea.first_name} {tea.last_name}</div>
+                          <div className="text-xs text-slate-500 flex gap-1 items-center">
+                            {tea.specialty && <span>{tea.specialty}</span>}
+                            {tea.specialty && tea.grades && <span>•</span>}
+                            {tea.grades && <span className="font-semibold text-emerald-600">{tea.grades}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  {teachers.filter((tea) => {
+                    if (!teacherSearch) return true;
+                    const searchLower = teacherSearch.toLowerCase();
+                    const fullName = `${tea.first_name} ${tea.last_name}`.toLowerCase();
+                    const reversedName = `${tea.last_name} ${tea.first_name}`.toLowerCase();
+                    return fullName.includes(searchLower) || reversedName.includes(searchLower);
+                  }).length === 0 && (
+                      <div className="p-3 text-sm text-slate-500 text-center">No teachers found</div>
+                    )}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('classes.pricing_type')}</label>
-              <select
-                required
+              <CustomSelect
                 value={newClass.pricing_type}
                 onChange={e => handlePricingTypeChange(setNewClass, e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              >
-                <option value="MONTH_BASED">{t('classes.pricing_monthly')}</option>
-                <option value="SESSION_BASED">{t('classes.pricing_session')}</option>
-                <option value="HOUR_BASED">{t('classes.pricing_hourly')}</option>
-              </select>
+                options={[
+                  { value: 'MONTH_BASED', label: t('classes.pricing_monthly') },
+                  { value: 'SESSION_BASED', label: t('classes.pricing_session') },
+                  { value: 'HOUR_BASED', label: t('classes.pricing_hourly') }
+                ]}
+                placeholder={t('classes.pricing_type')}
+              />
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('classes.pricing_value')}</label>
@@ -682,10 +856,26 @@ export default function Classes() {
           </div>
 
           <div>
-            <label className="block font-bold text-slate-700 mb-1">{t('timetable.title')}</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block font-bold text-slate-700">{t('timetable.title')}</label>
+              <button
+                type="button"
+                onClick={() => setIsRoomsModalOpen(true)}
+                className="text-[10px] text-emerald-600 hover:underline font-bold"
+              >
+                + {t('classes.manage_rooms_btn')}
+              </button>
+            </div>
             <div className="space-y-2.5 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <div className="grid grid-cols-[minmax(90px,110px)_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(80px,120px)] items-center gap-2 px-2 pb-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('timetable.day', 'Day')}</span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">{t('common.start_time', 'Start Time')}</span>
+                <span className="w-2"></span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">{t('common.end_time', 'End Time')}</span>
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center">{t('classes.room_name', 'Room')}</span>
+              </div>
               {DAY_OPTIONS.map((day) => (
-                <div key={day} className="grid grid-cols-[minmax(100px,140px)_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-xl bg-white px-2 py-2 border border-slate-200">
+                <div key={day} className="grid grid-cols-[minmax(90px,110px)_minmax(0,1fr)_auto_minmax(0,1fr)_minmax(80px,120px)] items-center gap-2 rounded-xl bg-white px-2 py-2 border border-slate-200">
                   <label className="flex items-center gap-2 text-[11px] font-bold text-slate-700 min-w-0">
                     <input
                       type="checkbox"
@@ -706,10 +896,8 @@ export default function Classes() {
                     <span className="truncate">{t(`timetable.days.${day}`)}</span>
                   </label>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">{t('common.start_time')}</span>
+                  <div className="flex items-center gap-1">
                     <TimeInput
-                      
                       value={daySchedule[day]?.start || '08:00'}
                       disabled={!daySchedule[day]?.enabled}
                       onChange={(e) => {
@@ -724,10 +912,8 @@ export default function Classes() {
 
                   <span className="text-center text-[10px] font-bold text-slate-500">-</span>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-500 whitespace-nowrap">{t('common.end_time')}</span>
+                  <div className="flex items-center gap-1">
                     <TimeInput
-                      
                       value={daySchedule[day]?.end || '09:00'}
                       disabled={!daySchedule[day]?.enabled}
                       onChange={(e) => {
@@ -738,6 +924,61 @@ export default function Classes() {
                       }}
                       className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
                     />
+                  </div>
+
+                  <div className="flex items-center gap-1 relative">
+                    <input
+                      type="text"
+                      value={daySchedule[day]?.room || ''}
+                      disabled={!daySchedule[day]?.enabled}
+                      onFocus={() => setActiveRoomDropdown(day)}
+                      onBlur={() => setTimeout(() => { if (activeRoomDropdown === day) setActiveRoomDropdown(null) }, 200)}
+                      onChange={(e) => {
+                        setDaySchedule((prev) => ({
+                          ...prev,
+                          [day]: { ...prev[day], room: e.target.value }
+                        }));
+                        setActiveRoomDropdown(day);
+                      }}
+                      placeholder={t('classes.room_placeholder', 'Room...')}
+                      className="w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-2 py-1.5 text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 text-[11px]"
+                    />
+                    {activeRoomDropdown === day && (
+                      <div className="absolute top-full right-0 z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+                        {rooms
+                          .filter(r => {
+                            const search = (daySchedule[day]?.room || '').toLowerCase();
+                            if (!search) return true;
+                            const roomName = `${r.name}${r.building ? ` - ${r.building}` : ''}`.toLowerCase();
+                            return roomName.includes(search);
+                          })
+                          .map(r => (
+                            <div
+                              key={r.id}
+                              onMouseDown={(e) => {
+                                e.preventDefault(); // Prevent onBlur from firing before click
+                                setDaySchedule((prev) => ({
+                                  ...prev,
+                                  [day]: { ...prev[day], room: `${r.name}${r.building ? ` - ${r.building}` : ''}` }
+                                }));
+                                setActiveRoomDropdown(null);
+                              }}
+                              className="px-3 py-2 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0"
+                            >
+                              <div className="text-sm font-bold text-slate-700">{r.name}</div>
+                              {r.building && <div className="text-[10px] text-slate-500">{r.building}</div>}
+                            </div>
+                          ))}
+                        {rooms.filter(r => {
+                          const search = (daySchedule[day]?.room || '').toLowerCase();
+                          if (!search) return true;
+                          const roomName = `${r.name}${r.building ? ` - ${r.building}` : ''}`.toLowerCase();
+                          return roomName.includes(search);
+                        }).length === 0 && (
+                            <div className="p-3 text-xs text-slate-500 text-center">No rooms found</div>
+                          )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -766,11 +1007,29 @@ export default function Classes() {
           MODAL: STUDENT PROMOTION & ROLLOVER WIZARD
           ========================================================================= */}
       <Modal
-        isOpen={isRolloverOpen}
-        onClose={() => setIsRolloverOpen(false)}
-        title={t('classes.modal_rollover_title')}
-        maxWidth="max-w-3xl"
-      >
+          isOpen={isRolloverOpen}
+          onClose={() => setIsRolloverOpen(false)}
+          title={t('classes.modal_rollover_title')}
+          maxWidth="max-w-3xl"
+          headerActions={
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsRolloverOpen(false)}
+                className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition-colors"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="submit"
+                form="rollover-form"
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-md shadow-emerald-600/30 transition-all"
+              >
+                {t('common.save')}
+              </button>
+            </div>
+          }
+        >
         <div className="space-y-4 text-xs">
           <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-100 text-emerald-800 font-medium">
             {t('classes.subtitle')}
@@ -779,45 +1038,38 @@ export default function Classes() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('classes.rollover_source_class')} *</label>
-              <select
+              <CustomSelect
                 value={rolloverSourceClass}
-                onChange={e => handleLoadRolloverStudents(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              >
-                <option value="">{t('common.search')}</option>
-                {classes.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+                onChange={val => handleLoadRolloverStudents(val)}
+                options={classes.map(c => ({ value: c.id, label: c.name }))}
+                placeholder={t('common.search')}
+              />
             </div>
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('classes.rollover_action')} *</label>
-              <select
+              <CustomSelect
                 value={rolloverAction}
-                onChange={e => setRolloverAction(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-              >
-                <option value="PROMOTE">{t('classes.action_promote')}</option>
-                <option value="RETAIN">{t('classes.action_retain')}</option>
-                <option value="GRADUATE">{t('classes.action_graduate')}</option>
-                <option value="REASSIGN">{t('classes.action_reassign')}</option>
-              </select>
+                onChange={val => setRolloverAction(val)}
+                options={[
+                  { value: 'PROMOTE', label: t('classes.action_promote') },
+                  { value: 'RETAIN', label: t('classes.action_retain') },
+                  { value: 'GRADUATE', label: t('classes.action_graduate') },
+                  { value: 'REASSIGN', label: t('classes.action_reassign') }
+                ]}
+                placeholder={t('classes.rollover_action')}
+              />
             </div>
 
             {(rolloverAction === 'PROMOTE' || rolloverAction === 'REASSIGN' || rolloverAction === 'RETAIN') && (
               <div>
                 <label className="block font-bold text-slate-700 mb-1">{t('classes.rollover_target_class')} *</label>
-                <select
+                <CustomSelect
                   value={targetClassId}
-                  onChange={e => setTargetClassId(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                >
-                  <option value="">{t('classes.select_target_class')}</option>
-                  {classes.map(c => (
-                    <option key={c.id} value={c.id}>{c.name} ({c.grade_level})</option>
-                  ))}
-                </select>
+                  onChange={val => setTargetClassId(val)}
+                  options={classes.map(c => ({ value: c.id, label: `${c.name} (${c.grade_level})` }))}
+                  placeholder={t('classes.select_target_class')}
+                />
               </div>
             )}
           </div>
@@ -896,6 +1148,33 @@ export default function Classes() {
         maxWidth="max-w-4xl"
       >
         <RoomsManager onRoomsChange={setRooms} />
+      </Modal>
+
+      {/* =========================================================================
+          MODAL: TEACHERS MANAGER
+          ========================================================================= */}
+      <Modal
+        isOpen={isTeachersModalOpen}
+        onClose={() => {
+          setIsTeachersModalOpen(false);
+          fetchTeachers();
+        }}
+        title={t('settings.manage_teachers', 'Manage Teachers')}
+        maxWidth="max-w-6xl"
+      >
+        <div className="max-h-[80vh] overflow-y-auto">
+          <Teachers
+            isEmbedded={true}
+            onSelectTeacher={(tea) => {
+              setNewClass({
+                ...newClass,
+                homeroom_teacher_id: String(tea.id)
+              });
+              setTeacherSearch(`${tea.first_name} ${tea.last_name}`);
+              setIsTeachersModalOpen(false);
+            }}
+          />
+        </div>
       </Modal>
     </div>
   );

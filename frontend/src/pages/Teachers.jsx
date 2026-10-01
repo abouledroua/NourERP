@@ -9,8 +9,9 @@ import PhotoUpload from '../components/PhotoUpload';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import DateInput from '../components/DateInput';
 import TimeInput from '../components/TimeInput';
+import CustomSelect from '../components/CustomSelect';
 
-export default function Teachers() {
+export default function Teachers({ isEmbedded, onSelectTeacher }) {
   const { t, isRTL } = useLanguage();
   const { settings } = useSettings();
   const toast = useToast();
@@ -43,7 +44,8 @@ export default function Teachers() {
     payment_type: 'MONTHLY',
     monthly_salary: '',
     hourly_rate: '',
-    photo_url: ''
+    photo_url: '',
+    grades: ''
   });
 
   const [editTeacher, setEditTeacher] = useState({
@@ -57,7 +59,8 @@ export default function Teachers() {
     payment_type: 'MONTHLY',
     monthly_salary: '',
     hourly_rate: '',
-    photo_url: ''
+    photo_url: '',
+    grades: ''
   });
 
   const [payForm, setPayForm] = useState({
@@ -308,6 +311,7 @@ export default function Teachers() {
                 <th className="py-3.5 px-4">{t('teachers.col_code')}</th>
                 <th className="py-3.5 px-4">{t('teachers.col_name')}</th>
                 <th className="py-3.5 px-4">{t('teachers.col_specialty')}</th>
+                <th className="py-3.5 px-4">{t('teachers.grades', 'المستويات / Grades')}</th>
                 <th className="py-3.5 px-4">{t('teachers.col_phone')}</th>
                 <th className="py-3.5 px-4">{t('teachers.col_salary', 'الراتب / نسبة بالساعة')}</th>
                 <th className="py-3.5 px-4">{t('teachers.col_status', 'الحالة')}</th>
@@ -316,7 +320,15 @@ export default function Teachers() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {teachers.map(tea => (
-                <tr key={tea.id} className="hover:bg-slate-50/80 transition-colors">
+                <tr 
+                  key={tea.id} 
+                  className={`transition-colors ${isEmbedded ? 'hover:bg-emerald-50 cursor-pointer' : 'hover:bg-slate-50/80'}`}
+                  onClick={() => {
+                    if (isEmbedded && onSelectTeacher) {
+                      onSelectTeacher(tea);
+                    }
+                  }}
+                >
                   <td className="py-3 px-4 font-mono font-bold text-slate-700">{tea.employee_code}</td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-2.5">
@@ -343,6 +355,7 @@ export default function Teachers() {
                     </div>
                   </td>
                   <td className="py-3 px-4 font-semibold text-emerald-800">{tea.specialty || '-'}</td>
+                  <td className="py-3 px-4 text-slate-600">{tea.grades || '-'}</td>
                   <td className="py-3 px-4 font-mono text-slate-600">{tea.phone || '-'}</td>
                   <td className="py-3 px-4 font-mono font-bold text-slate-900">
                     {tea.payment_type === 'HOURLY' ? (
@@ -358,7 +371,8 @@ export default function Teachers() {
                   </td>
                   <td className="py-3 px-4 text-center">
                     <button
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         setPayTeacher(tea);
                         setPayForm({
                           payment_type: tea.payment_type || 'MONTHLY',
@@ -375,8 +389,22 @@ export default function Teachers() {
                       <Wallet className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => {
-                        setEditTeacher(tea);
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditTeacher({
+                          id: tea.id || '',
+                          first_name: tea.first_name || '',
+                          last_name: tea.last_name || '',
+                          specialty: tea.specialty || '',
+                          qualification: tea.qualification || '',
+                          phone: tea.phone || '',
+                          email: tea.email || '',
+                          payment_type: tea.payment_type || 'MONTHLY',
+                          monthly_salary: tea.monthly_salary || '',
+                          hourly_rate: tea.hourly_rate || '',
+                          photo_url: tea.photo_url || '',
+                          grades: tea.grades || ''
+                        });
                         setIsEditModalOpen(true);
                       }}
                       title={t('teachers.edit_btn', 'تعديل الأستاذ')}
@@ -385,7 +413,10 @@ export default function Teachers() {
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
-                      onClick={() => handleDeleteTeacher(tea)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteTeacher(tea);
+                      }}
                       title={t('teachers.delete_btn', 'حذف الأستاذ')}
                       className="p-1.5 text-rose-500 hover:bg-rose-50 rounded-xl transition-colors mx-1"
                     >
@@ -466,27 +497,37 @@ export default function Teachers() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('teachers.phone')} *</label>
+              <label className="block font-bold text-slate-700 mb-1">{t('teachers.phone')}</label>
               <input
                 type="text"
-                required
+
                 value={newTeacher.phone}
                 onChange={e => setNewTeacher({ ...newTeacher, phone: e.target.value })}
                 placeholder="0550 00 00 00"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('teachers.grades', 'المستويات / Grades')}</label>
+              <input
+                type="text"
+                value={newTeacher.grades}
+                onChange={e => setNewTeacher({ ...newTeacher, grades: e.target.value })}
+                placeholder={t('teachers.grades_placeholder', 'E.g., 1st Year Middle School')}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">{t('teachers.payment_type', 'طريقة الدفع')} *</label>
-                <select
+                <CustomSelect
                   value={newTeacher.payment_type}
                   onChange={e => setNewTeacher({ ...newTeacher, payment_type: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
                   <option value="MONTHLY">{t('teachers.payment_monthly', 'راتب شهري')}</option>
                   <option value="HOURLY">{t('teachers.payment_hourly', 'بالساعة')}</option>
-                </select>
+                </CustomSelect>
               </div>
               {newTeacher.payment_type === 'MONTHLY' ? (
                 <div>
@@ -584,27 +625,37 @@ export default function Teachers() {
               />
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">{t('teachers.col_phone')} *</label>
+              <label className="block font-bold text-slate-700 mb-1">{t('teachers.col_phone')}</label>
               <input
                 type="text"
-                required
+
                 value={editTeacher.phone}
                 onChange={e => setEditTeacher({ ...editTeacher, phone: e.target.value })}
                 placeholder="0550 00 00 00"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
               />
             </div>
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">{t('teachers.grades', 'المستويات / Grades')}</label>
+              <input
+                type="text"
+                value={editTeacher.grades}
+                onChange={e => setEditTeacher({ ...editTeacher, grades: e.target.value })}
+                placeholder={t('teachers.grades_placeholder', 'E.g., 1st Year Middle School')}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:col-span-2">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">{t('teachers.payment_type', 'طريقة الدفع')} *</label>
-                <select
+                <CustomSelect
                   value={editTeacher.payment_type || 'MONTHLY'}
                   onChange={e => setEditTeacher({ ...editTeacher, payment_type: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                 >
                   <option value="MONTHLY">{t('teachers.payment_monthly', 'راتب شهري')}</option>
                   <option value="HOURLY">{t('teachers.payment_hourly', 'بالساعة')}</option>
-                </select>
+                </CustomSelect>
               </div>
               {editTeacher.payment_type === 'HOURLY' ? (
                 <div>
@@ -679,7 +730,7 @@ export default function Teachers() {
               </div>
               <div>
                 <label className="block font-semibold text-slate-600 mb-0.5">{t('teachers.sub_original_teacher')}</label>
-                <select
+                <CustomSelect
                   required
                   value={newSub.original_teacher_id}
                   onChange={e => setNewSub({ ...newSub, original_teacher_id: e.target.value })}
@@ -689,11 +740,11 @@ export default function Teachers() {
                   {teachers.map(tItem => (
                     <option key={tItem.id} value={tItem.id}>{tItem.first_name} {tItem.last_name}</option>
                   ))}
-                </select>
+                </CustomSelect>
               </div>
               <div>
                 <label className="block font-semibold text-slate-600 mb-0.5">{t('teachers.sub_substitute_teacher')}</label>
-                <select
+                <CustomSelect
                   required
                   value={newSub.substitute_teacher_id}
                   onChange={e => setNewSub({ ...newSub, substitute_teacher_id: e.target.value })}
@@ -703,14 +754,14 @@ export default function Teachers() {
                   {teachers.map(tItem => (
                     <option key={tItem.id} value={tItem.id}>{tItem.first_name} {tItem.last_name}</option>
                   ))}
-                </select>
+                </CustomSelect>
               </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
               <div>
                 <label className="block font-semibold text-slate-600 mb-0.5">{t('teachers.sub_class')}</label>
-                <select
+                <CustomSelect
                   required
                   value={newSub.class_id}
                   onChange={e => setNewSub({ ...newSub, class_id: e.target.value })}
@@ -720,11 +771,11 @@ export default function Teachers() {
                   {classes.map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
-                </select>
+                </CustomSelect>
               </div>
               <div>
                 <label className="block font-semibold text-slate-600 mb-0.5">{t('teachers.sub_subject')}</label>
-                <select
+                <CustomSelect
                   required
                   value={newSub.subject_id}
                   onChange={e => setNewSub({ ...newSub, subject_id: e.target.value })}
@@ -734,7 +785,7 @@ export default function Teachers() {
                   {subjects.map(s => (
                     <option key={s.id} value={s.id}>{isRTL ? s.name_ar : (s.name_fr || s.name_en || s.name_ar)}</option>
                   ))}
-                </select>
+                </CustomSelect>
               </div>
               <div>
                 <label className="block font-semibold text-slate-600 mb-0.5">{t('timetable.time_from')} - {t('timetable.time_to')}</label>
@@ -818,7 +869,7 @@ export default function Teachers() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('teachers.payment_type', 'طريقة الدفع')}</label>
-              <select
+              <CustomSelect
                 value={payForm.payment_type}
                 onChange={e => {
                   const pType = e.target.value;
@@ -832,7 +883,7 @@ export default function Teachers() {
               >
                 <option value="MONTHLY">{t('teachers.payment_monthly', 'راتب شهري')}</option>
                 <option value="HOURLY">{t('teachers.payment_hourly', 'بالساعة')}</option>
-              </select>
+              </CustomSelect>
             </div>
             
             {payForm.payment_type === 'HOURLY' && (
@@ -868,7 +919,7 @@ export default function Teachers() {
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('teachers.payment_method', 'وسيلة الدفع')}</label>
-              <select
+              <CustomSelect
                 value={payForm.payment_method}
                 onChange={e => setPayForm({ ...payForm, payment_method: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
@@ -876,11 +927,11 @@ export default function Teachers() {
                 <option value="CASH">{t('common.cash', 'نقداً')}</option>
                 <option value="BANK_TRANSFER">{t('common.bank_transfer', 'تحويل بنكي')}</option>
                 <option value="CHEQUE">{t('common.cheque', 'شيك')}</option>
-              </select>
+              </CustomSelect>
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('finance.financial_account', 'الحساب المالي')}</label>
-              <select
+              <CustomSelect
                 required
                 value={payForm.account_id}
                 onChange={e => setPayForm({ ...payForm, account_id: e.target.value })}
@@ -888,7 +939,7 @@ export default function Teachers() {
               >
                 <option value="">{t('finance.select_account', 'اختر الحساب...')}</option>
                 {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance})</option>)}
-              </select>
+              </CustomSelect>
             </div>
           </div>
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">

@@ -5,6 +5,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../context/UIFeedbackContext';
 import Modal from '../components/Modal';
+import CustomSelect from '../components/CustomSelect';
 
 export default function Grades() {
   const { t } = useLanguage();
@@ -187,35 +188,35 @@ export default function Grades() {
       <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-xs flex flex-wrap items-center gap-4 text-xs">
         <div>
           <label className="block font-bold text-slate-500 mb-1">{t('grades.select_class')}</label>
-          <select
+          <CustomSelect
             value={selectedClassId}
             onChange={e => setSelectedClassId(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none min-w-[180px]"
           >
             {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          </CustomSelect>
         </div>
 
         <div>
           <label className="block font-bold text-slate-500 mb-1">{t('grades.select_subject')}</label>
-          <select
+          <CustomSelect
             value={selectedSubjectId}
             onChange={e => setSelectedSubjectId(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none min-w-[180px]"
           >
             {subjects.map(s => <option key={s.id} value={s.id}>{s.name_ar}</option>)}
-          </select>
+          </CustomSelect>
         </div>
 
         <div>
           <label className="block font-bold text-slate-500 mb-1">{t('grades.select_term')}</label>
-          <select
+          <CustomSelect
             value={selectedTermId}
             onChange={e => setSelectedTermId(e.target.value)}
             className="bg-slate-50 border border-slate-200 rounded-xl p-2 font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none min-w-[180px]"
           >
             {terms.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-          </select>
+          </CustomSelect>
         </div>
       </div>
 

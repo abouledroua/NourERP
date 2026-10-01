@@ -24,6 +24,7 @@ import Modal from '../components/Modal';
 import MultiReceiptModal from '../components/MultiReceiptModal';
 import { useToast, useConfirm } from '../context/UIFeedbackContext';
 import DateInput from '../components/DateInput';
+import CustomSelect from '../components/CustomSelect';
 
 export default function Finance() {
   const { t, isRTL } = useLanguage();
@@ -443,7 +444,7 @@ export default function Finance() {
             </div>
 
             {activeTab !== 'CASH' && activeTab !== 'ACCOUNTS' && (
-              <select
+              <CustomSelect
                 value={statusFilter}
                 onChange={e => setStatusFilter(e.target.value)}
                 className="bg-slate-50 border border-slate-200 rounded-xl py-1.5 px-2.5 text-xs text-slate-700 font-bold focus:ring-2 focus:ring-emerald-500"
@@ -452,7 +453,7 @@ export default function Finance() {
                 <option value="PAID">{t('finance.status_paid')}</option>
                 <option value="PARTIAL">{t('finance.status_partial')}</option>
                 <option value="UNPAID">{t('finance.status_unpaid')}</option>
-              </select>
+              </CustomSelect>
             )}
           </div>
         </div>
@@ -676,7 +677,7 @@ export default function Finance() {
         <form onSubmit={handleCreateTuitionPayment} className="space-y-4 text-xs">
           <div>
             <label className="block font-bold text-slate-700 mb-1">{t('finance.modal_tuition_student')}</label>
-            <select
+            <CustomSelect
               required
               value={tuitionForm.student_id}
               onChange={e => setTuitionForm({ ...tuitionForm, student_id: e.target.value })}
@@ -688,13 +689,13 @@ export default function Finance() {
                   {s.first_name_ar} {s.last_name_ar} ({s.matricule}) - {s.class_name}
                 </option>
               ))}
-            </select>
+            </CustomSelect>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('finance.modal_tuition_fee_type')}</label>
-              <select
+              <CustomSelect
                 required
                 value={tuitionForm.fee_type_id}
                 onChange={e => {
@@ -711,7 +712,7 @@ export default function Finance() {
                 {feeTypes.map(f => (
                   <option key={f.id} value={f.id}>{f.name_ar} ({formatCurrency(f.default_amount, settings.currency)})</option>
                 ))}
-              </select>
+              </CustomSelect>
             </div>
 
             <div>
@@ -740,7 +741,7 @@ export default function Finance() {
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('finance.modal_tuition_discount_type')}</label>
-              <select
+              <CustomSelect
                 value={tuitionForm.discount_type}
                 onChange={e => setTuitionForm({ ...tuitionForm, discount_type: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
@@ -748,7 +749,7 @@ export default function Finance() {
                 <option value="NONE">{t('finance.discount_none')}</option>
                 <option value="PERCENTAGE">{t('finance.discount_percentage')}</option>
                 <option value="FIXED">{t('finance.discount_fixed', { currency: settings.currency || 'DZD' })}</option>
-              </select>
+              </CustomSelect>
             </div>
 
             {tuitionForm.discount_type !== 'NONE' && (
@@ -778,7 +779,7 @@ export default function Finance() {
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('finance.modal_tuition_method')}</label>
-              <select
+              <CustomSelect
                 value={tuitionForm.payment_method}
                 onChange={e => setTuitionForm({ ...tuitionForm, payment_method: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
@@ -787,7 +788,7 @@ export default function Finance() {
                 <option value="BANK_TRANSFER">{t('finance.method_transfer')}</option>
                 <option value="CHEQUE">{t('finance.method_cheque')}</option>
                 <option value="CARD">{t('finance.method_card')}</option>
-              </select>
+              </CustomSelect>
             </div>
           </div>
 
@@ -851,7 +852,7 @@ export default function Finance() {
 
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('finance.modal_tuition_method')}</label>
-              <select
+              <CustomSelect
                 value={settleForm.payment_method}
                 onChange={e => setSettleForm({ ...settleForm, payment_method: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5"
@@ -859,7 +860,7 @@ export default function Finance() {
                 <option value="CASH">{t('finance.method_cash')}</option>
                 <option value="BANK_TRANSFER">{t('finance.method_transfer')}</option>
                 <option value="CHEQUE">{t('finance.method_cheque')}</option>
-              </select>
+              </CustomSelect>
             </div>
 
             <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
@@ -893,14 +894,14 @@ export default function Finance() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('finance.modal_cash_type')}</label>
-              <select
+              <CustomSelect
                 value={cashForm.transaction_type}
                 onChange={e => setCashForm({ ...cashForm, transaction_type: e.target.value })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-bold"
               >
                 <option value="EXPENSE">{t('finance.modal_cash_type_expense')}</option>
                 <option value="INCOME">{t('finance.modal_cash_type_income')}</option>
-              </select>
+              </CustomSelect>
             </div>
             <div>
               <label className="block font-bold text-slate-700 mb-1">{t('finance.modal_cash_amount', { currency: settings.currency || 'DZD' })}</label>
@@ -1014,7 +1015,7 @@ export default function Finance() {
         <form onSubmit={handleTransfer} className="space-y-4 text-xs">
           <div>
             <label className="block font-bold text-slate-700 mb-1">{t("finance.from_account")}</label>
-            <select
+            <CustomSelect
               required
               value={transferForm.from_account_id}
               onChange={e => setTransferForm({ ...transferForm, from_account_id: e.target.value })}
@@ -1022,11 +1023,11 @@ export default function Finance() {
             >
               <option value="">{t("finance.select_account")}</option>
               {accounts.filter(acc => acc.id.toString() !== transferForm.to_account_id).map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance})</option>)}
-            </select>
+            </CustomSelect>
           </div>
           <div>
             <label className="block font-bold text-slate-700 mb-1">{t("finance.to_account")}</label>
-            <select
+            <CustomSelect
               required
               value={transferForm.to_account_id}
               onChange={e => setTransferForm({ ...transferForm, to_account_id: e.target.value })}
@@ -1034,7 +1035,7 @@ export default function Finance() {
             >
               <option value="">{t("finance.select_account")}</option>
               {accounts.filter(acc => acc.id.toString() !== transferForm.from_account_id).map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.balance})</option>)}
-            </select>
+            </CustomSelect>
           </div>
           <div>
             <label className="block font-bold text-slate-700 mb-1">{t("finance.amount")}</label>
